@@ -20,6 +20,7 @@ pub mod frontier;
 pub mod greedy;
 pub mod measure;
 pub mod render;
+pub mod table;
 pub mod tags;
 pub mod text;
 pub mod tokens;
@@ -30,4 +31,5 @@ pub use doc::{
     nest, softline, tag, text, Doc, TagId,
 };
 pub use render::{to_lines, to_string, words};
+pub use table::{table, Alignment, Column, Table, TableError};
 pub use text::from_text;

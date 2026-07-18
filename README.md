@@ -21,6 +21,7 @@ One document algebra, one cost definition, three engines:
 | `text` | `from_text`: classified raw-text ingestion with an independent break choice at every horizontal whitespace run. |
 | `tags` / `tokens` | Built-in text-kind tags and classified punctuation/whitespace constructors. |
 | `measure` | An associative `(height, widest, first, last)` line-shape monoid for bottom-up experiments. |
+| `table` | Pure static compilation of flat cells into aligned compact and vertically stacked fallback documents. |
 | `corpus` | JSON, Go-like AST, SQL, and indented-prose corpora recovered from the prototype. The AST signature fixture contains a strict optimal-over-greedy case. |
 
 ## The cost-model contract
@@ -71,6 +72,29 @@ At width 6, first-fit greedy uses three lines for `a bb cccc`; the optimal
 frontier uses two. `tests/text.rs` locks that research result against the
 brute-force oracle where applicable.
 
+## Aligned tables
+
+Tables measure flat cell projections once, then compile to ordinary
+`Choice`, `Concat`, `HardLine`, `Tag`, and `Align` nodes:
+
+```rust
+use pretty::{table, text, Alignment, Column};
+
+let doc = table([
+    Column::labeled(text("NAME")),
+    Column::labeled(text("COUNT")).alignment(Alignment::Right),
+])
+.header()
+.row([text("alpha"), text("7")])
+.row([text("beta"), text("123")])
+.build()
+.expect("cells have flat projections");
+```
+
+The compact branch aligns columns; the fallback stacks cells when compact
+layout would overflow. Non-flattenable headers and cells return a
+coordinate-bearing `TableError`.
+
 ## Notes and known simplifications
 
 - `display_width` counts chars; swap in `unicode-width` behind that single
@@ -84,8 +108,9 @@ brute-force oracle where applicable.
   at the cost of Wadler's per-group flat mode being a derived notion.
 - Tags (`Doc::Tag`) are carried through to output spans and never affect
   layout, mirroring the semantic-token separation in the Go prototype.
-- General aligned tables remain a specified research boundary. The pure
-  alternatives and implementation STOP criteria are in
+- The implemented table compiler accepts flat cell projections. General
+  tables whose cells retain internal layout choices still require the
+  first-class-node design described in
   [`docs/aligned-tables.md`](docs/aligned-tables.md).
 
 ## Reading list

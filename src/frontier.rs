@@ -175,6 +175,7 @@ pub fn best<M: CostModel>(cm: &M, doc: &Rc<Doc>) -> Cand<M::Cost> {
 mod tests {
     use crate::cost::OverflowThenHeight;
     use crate::doc::{concat2, line, text};
+    use crate::table::{table, Column};
 
     use super::Engine;
 
@@ -183,6 +184,31 @@ mod tests {
         let left = concat2(text("same"), line());
         let rebuilt = concat2(text("same"), line());
         assert!(!std::rc::Rc::ptr_eq(&left, &rebuilt));
+
+        let cm = OverflowThenHeight { width: 20 };
+        let mut engine = Engine::new(&cm);
+        engine.solve(&left, 0, 0, None);
+        let after_first = engine.memo.len();
+        let docs_after_first = engine.doc_ids.len();
+        engine.solve(&rebuilt, 0, 0, None);
+
+        assert_eq!(engine.memo.len(), after_first);
+        assert_eq!(engine.doc_ids.len(), docs_after_first);
+    }
+
+    #[test]
+    fn rebuilt_equal_tables_share_interned_documents_and_memo_entries() {
+        let build = || {
+            table([Column::new(), Column::new()])
+                .row([text("left"), text("right")])
+                .row([text("up"), text("down")])
+                .build()
+                .unwrap()
+        };
+        let left = build();
+        let rebuilt = build();
+        assert!(!std::rc::Rc::ptr_eq(&left, &rebuilt));
+        assert_eq!(left, rebuilt);
 
         let cm = OverflowThenHeight { width: 20 };
         let mut engine = Engine::new(&cm);
