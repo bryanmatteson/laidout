@@ -1,0 +1,11 @@
+[package]
+name = "pretty"
+version = "0.1.0"
+edition = "2021"
+description = "Research pretty-printer: parametric-cost optimal layout with brute-force and greedy oracles"
+license = "MIT"
+
+[dependencies]
+
+[dev-dependencies]
+proptest = "1"

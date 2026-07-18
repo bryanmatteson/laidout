@@ -1,0 +1,92 @@
+//! Differential properties: the frontier engine against the brute-force
+//! oracle and the greedy baseline, over random documents.
+
+use std::rc::Rc;
+
+use proptest::prelude::*;
+
+use pretty::cost::OverflowThenHeight;
+use pretty::doc::{concat2, count_choices, group, hardline, line, nest, tag, text, Doc};
+use pretty::render::{cost_of_lines, to_lines};
+use pretty::{brute, frontier, greedy};
+
+const MAX_CHOICES: usize = 8;
+
+/// Content with all whitespace removed. Invariant across every layout of a
+/// document: breaks and their flat projections only differ in whitespace.
+fn stripped(s: &str) -> String {
+    s.chars().filter(|c| !c.is_whitespace()).collect()
+}
+
+fn arb_doc() -> impl Strategy<Value = Rc<Doc>> {
+    let leaf = prop_oneof![
+        "[a-z]{1,6}".prop_map(text),
+        Just(line()),
+        Just(hardline()),
+    ];
+    leaf.prop_recursive(4, 24, 3, |inner| {
+        prop_oneof![
+            (inner.clone(), inner.clone()).prop_map(|(a, b)| concat2(a, b)),
+            (1u16..4, inner.clone()).prop_map(|(n, d)| nest(n, d)),
+            inner.clone().prop_map(group),
+            (0u32..3, inner).prop_map(|(t, d)| tag(t, d)),
+        ]
+    })
+}
+
+proptest! {
+    /// The frontier engine is optimal: it matches exhaustive enumeration.
+    #[test]
+    fn frontier_matches_brute(doc in arb_doc(), width in 2u32..30) {
+        prop_assume!(count_choices(&doc) <= MAX_CHOICES);
+        let cm = OverflowThenHeight { width };
+        let oracle = brute::best(&cm, &doc, MAX_CHOICES);
+        let best = frontier::best(&cm, &doc);
+        prop_assert_eq!(&best.cost, &oracle.cost);
+    }
+
+    /// The frontier engine never does worse than the greedy baseline.
+    #[test]
+    fn frontier_at_most_greedy(doc in arb_doc(), width in 2u32..30) {
+        prop_assume!(count_choices(&doc) <= MAX_CHOICES);
+        let cm = OverflowThenHeight { width };
+        let g = greedy::layout(&cm, &doc, width);
+        let best = frontier::best(&cm, &doc);
+        prop_assert!(best.cost <= g.cost, "frontier {:?} > greedy {:?}", best.cost, g.cost);
+    }
+
+    /// Every engine renders the same content modulo whitespace.
+    #[test]
+    fn content_is_layout_invariant(doc in arb_doc(), width in 2u32..30) {
+        prop_assume!(count_choices(&doc) <= MAX_CHOICES);
+        let cm = OverflowThenHeight { width };
+        let oracle = brute::best(&cm, &doc, MAX_CHOICES);
+        let g = greedy::layout(&cm, &doc, width);
+        let best = frontier::best(&cm, &doc);
+        let expected = stripped(&oracle.text());
+        prop_assert_eq!(stripped(&g.lines.join("\n")), expected.clone());
+        prop_assert_eq!(stripped(&pretty::to_string(&best.out)), expected);
+    }
+
+    /// A frontier candidate's accumulated cost agrees with the cost of its
+    /// rendered lines (the incrementality contract, end to end).
+    #[test]
+    fn frontier_cost_is_self_consistent(doc in arb_doc(), width in 2u32..30) {
+        prop_assume!(count_choices(&doc) <= MAX_CHOICES);
+        let cm = OverflowThenHeight { width };
+        let best = frontier::best(&cm, &doc);
+        let lines = to_lines(&best.out);
+        prop_assert_eq!(cost_of_lines(&cm, &lines), best.cost);
+    }
+
+    /// Same document, same model: same bytes, run to run.
+    #[test]
+    fn frontier_is_deterministic(doc in arb_doc(), width in 2u32..30) {
+        prop_assume!(count_choices(&doc) <= MAX_CHOICES);
+        let cm = OverflowThenHeight { width };
+        let a = frontier::best(&cm, &doc);
+        let b = frontier::best(&cm, &doc);
+        prop_assert_eq!(pretty::to_string(&a.out), pretty::to_string(&b.out));
+        prop_assert_eq!(a.cost, b.cost);
+    }
+}
