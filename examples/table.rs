@@ -1,7 +1,7 @@
 //! Render a statically compiled aligned table in compact and fallback forms.
 
-use pretty::cost::OverflowThenHeight;
-use pretty::{frontier, table, text, to_string, Alignment, Column};
+use laidout::cost::OverflowThenHeight;
+use laidout::{frontier, table, text, to_string, Alignment, Column};
 
 fn main() {
     let doc = table([

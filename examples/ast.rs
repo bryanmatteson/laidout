@@ -1,9 +1,9 @@
 //! Render the Go-like AST corpus at several widths and compare greedy with
 //! optimal costs.
 
-use pretty::corpus::ast::{asymmetric_file, sample_file, Formatter};
-use pretty::cost::OverflowThenHeight;
-use pretty::{frontier, greedy, to_string};
+use laidout::corpus::ast::{asymmetric_file, sample_file, Formatter};
+use laidout::cost::OverflowThenHeight;
+use laidout::{frontier, greedy, to_string};
 
 fn main() {
     let doc = Formatter::default().format_file(&sample_file());

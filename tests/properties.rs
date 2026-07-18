@@ -5,11 +5,11 @@ use std::rc::Rc;
 
 use proptest::prelude::*;
 
-use pretty::cost::OverflowThenHeight;
-use pretty::doc::{align, concat2, count_choices, group, hardline, line, nest, tag, text, Doc};
-use pretty::measure::Measurement;
-use pretty::render::{cost_of_lines, to_lines};
-use pretty::{brute, frontier, greedy};
+use laidout::cost::OverflowThenHeight;
+use laidout::doc::{align, concat2, count_choices, group, hardline, line, nest, tag, text, Doc};
+use laidout::measure::Measurement;
+use laidout::render::{cost_of_lines, to_lines};
+use laidout::{brute, frontier, greedy};
 
 const MAX_CHOICES: usize = 8;
 
@@ -48,7 +48,7 @@ fn unicode_terminal_width_is_consistent_across_all_engines() {
 
     assert_eq!(oracle.text(), "界\ne\u{301}");
     assert_eq!(greedy.lines, best_lines);
-    assert_eq!(pretty::to_string(&best.out), oracle.text());
+    assert_eq!(laidout::to_string(&best.out), oracle.text());
     assert_eq!(greedy.cost, oracle.cost);
     assert_eq!(best.cost, oracle.cost);
     assert_eq!(cost_of_lines(&cm, &best_lines), best.cost);
@@ -85,7 +85,7 @@ proptest! {
         let best = frontier::best(&cm, &doc);
         let expected = stripped(&oracle.text());
         prop_assert_eq!(stripped(&g.lines.join("\n")), expected.clone());
-        prop_assert_eq!(stripped(&pretty::to_string(&best.out)), expected);
+        prop_assert_eq!(stripped(&laidout::to_string(&best.out)), expected);
     }
 
     /// A frontier candidate's accumulated cost agrees with the cost of its
@@ -106,7 +106,7 @@ proptest! {
         let cm = OverflowThenHeight { width };
         let a = frontier::best(&cm, &doc);
         let b = frontier::best(&cm, &doc);
-        prop_assert_eq!(pretty::to_string(&a.out), pretty::to_string(&b.out));
+        prop_assert_eq!(laidout::to_string(&a.out), laidout::to_string(&b.out));
         prop_assert_eq!(a.cost, b.cost);
     }
 

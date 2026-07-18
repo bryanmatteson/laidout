@@ -1,9 +1,9 @@
 //! Render the ported JSON corpus at several widths with both engines,
 //! printing costs so greedy-versus-optimal gaps are visible.
 
-use pretty::corpus::{complex_value, format};
-use pretty::cost::OverflowThenHeight;
-use pretty::{frontier, greedy, to_string};
+use laidout::corpus::{complex_value, format};
+use laidout::cost::OverflowThenHeight;
+use laidout::{frontier, greedy, to_string};
 
 fn main() {
     let doc = format(&complex_value());

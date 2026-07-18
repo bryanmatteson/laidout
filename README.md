@@ -1,4 +1,4 @@
-# pretty
+# laidout
 
 A research pretty-printer in Rust: parametric-cost **optimal layout** via
 memoized Pareto-frontier search, kept honest by a brute-force oracle and the
@@ -61,7 +61,7 @@ Run everything with `cargo test`.
 horizontal whitespace into layout choices:
 
 ```rust
-use pretty::{from_text, frontier, to_string, OverflowThenHeight};
+use laidout::{from_text, frontier, to_string, OverflowThenHeight};
 
 let doc = from_text("  a bb cccc");
 let best = frontier::best(&OverflowThenHeight { width: 6 }, &doc);
@@ -78,7 +78,7 @@ Tables measure flat cell projections once, then compile to ordinary
 `Choice`, `Concat`, `HardLine`, `Tag`, and `Align` nodes:
 
 ```rust
-use pretty::{table, text, Alignment, Column};
+use laidout::{table, text, Alignment, Column};
 
 let doc = table([
     Column::labeled(text("NAME")),

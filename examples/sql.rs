@@ -1,8 +1,8 @@
 //! Render the recovered SQL corpus with greedy and optimal costs.
 
-use pretty::corpus::sql::{complex_query, Formatter};
-use pretty::cost::OverflowThenHeight;
-use pretty::{frontier, greedy, to_string};
+use laidout::corpus::sql::{complex_query, Formatter};
+use laidout::cost::OverflowThenHeight;
+use laidout::{frontier, greedy, to_string};
 
 fn main() {
     let doc = Formatter::default().format_query(&complex_query());

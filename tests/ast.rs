@@ -1,6 +1,6 @@
-use pretty::corpus::ast::{asymmetric_file, sample_file, Formatter};
-use pretty::cost::OverflowThenHeight;
-use pretty::{brute, count_choices, frontier, greedy, to_string};
+use laidout::corpus::ast::{asymmetric_file, sample_file, Formatter};
+use laidout::cost::OverflowThenHeight;
+use laidout::{brute, count_choices, frontier, greedy, to_string};
 
 #[test]
 fn sample_matches_the_documented_go_like_shape() {

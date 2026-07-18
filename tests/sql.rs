@@ -1,6 +1,6 @@
-use pretty::corpus::sql::{complex_query, Formatter};
-use pretty::cost::OverflowThenHeight;
-use pretty::{frontier, greedy, to_string};
+use laidout::corpus::sql::{complex_query, Formatter};
+use laidout::cost::OverflowThenHeight;
+use laidout::{frontier, greedy, to_string};
 
 #[test]
 fn complex_query_matches_the_prototype_fixture_at_80() {

@@ -1,6 +1,8 @@
-use pretty::cost::OverflowThenHeight;
-use pretty::render::Out;
-use pretty::{align, brute, concat, from_text, frontier, greedy, line, tags, text, to_string, Doc};
+use laidout::cost::OverflowThenHeight;
+use laidout::render::Out;
+use laidout::{
+    align, brute, concat, from_text, frontier, greedy, line, tags, text, to_string, Doc,
+};
 
 fn text_tags(out: &Out, tags_out: &mut Vec<(String, Option<u32>)>) {
     match out {

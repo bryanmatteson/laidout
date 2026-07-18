@@ -1,6 +1,6 @@
-use pretty::corpus::fluid::PROSE;
-use pretty::cost::OverflowThenHeight;
-use pretty::{from_text, frontier, greedy, to_string, words};
+use laidout::corpus::fluid::PROSE;
+use laidout::cost::OverflowThenHeight;
+use laidout::{from_text, frontier, greedy, to_string, words};
 
 #[test]
 fn recovered_prose_round_trips_wide_and_reflows_without_overflow() {
@@ -18,5 +18,5 @@ fn recovered_prose_round_trips_wide_and_reflows_without_overflow() {
     assert_eq!(words(&rendered), words(PROSE));
     assert!(rendered
         .lines()
-        .all(|line| pretty::cost::display_width(line) <= 40));
+        .all(|line| laidout::cost::display_width(line) <= 40));
 }

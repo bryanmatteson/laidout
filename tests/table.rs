@@ -1,12 +1,12 @@
-use pretty::cost::OverflowThenHeight;
-use pretty::render::Out;
-use pretty::{
+use laidout::cost::OverflowThenHeight;
+use laidout::render::Out;
+use laidout::{
     brute, choice, concat, count_choices, frontier, greedy, hardline, line, table, tag, text,
     to_string, Alignment, Column, Table, TableError,
 };
 use proptest::prelude::*;
 
-fn aligned_table() -> std::rc::Rc<pretty::Doc> {
+fn aligned_table() -> std::rc::Rc<laidout::Doc> {
     table([
         Column::labeled(text("NAME")),
         Column::labeled(text("COUNT"))
@@ -105,7 +105,7 @@ fn tags_survive_compact_padding_and_fallback_layouts() {
         compact_runs,
         vec![
             ("a".into(), Some(100)),
-            ("  ".into(), Some(pretty::tags::WHITESPACE)),
+            ("  ".into(), Some(laidout::tags::WHITESPACE)),
             ("b".into(), Some(101)),
         ]
     );
@@ -137,7 +137,7 @@ fn bounded_table_matches_brute_force_and_is_deterministic() {
 fn zero_row_and_header_only_tables_have_defined_output() {
     assert_eq!(
         Table::new([Column::new()]).build().unwrap(),
-        pretty::empty()
+        laidout::empty()
     );
 
     let header_only = table([Column::labeled(text("A")), Column::labeled(text("B"))])
@@ -215,8 +215,8 @@ proptest! {
         let greedy = greedy::layout(&cm, &doc, width);
 
         let expected = rows.iter().flatten().cloned().collect::<Vec<_>>();
-        let best_words = pretty::words(&to_string(&best.out));
-        let greedy_words = pretty::words(&greedy.lines.join("\n"));
+        let best_words = laidout::words(&to_string(&best.out));
+        let greedy_words = laidout::words(&greedy.lines.join("\n"));
 
         prop_assert_eq!(best.cost, oracle.cost);
         prop_assert!(best.cost <= greedy.cost);

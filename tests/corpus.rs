@@ -1,8 +1,8 @@
 //! The ported JSON corpus, exercised at several widths.
 
-use pretty::corpus::{complex_value, format, Value};
-use pretty::cost::OverflowThenHeight;
-use pretty::{brute, frontier, greedy, to_string};
+use laidout::corpus::{complex_value, format, Value};
+use laidout::cost::OverflowThenHeight;
+use laidout::{brute, frontier, greedy, to_string};
 
 fn stripped(s: &str) -> String {
     s.chars().filter(|c| !c.is_whitespace()).collect()
@@ -95,7 +95,7 @@ fn complex_json_readable_at_40() {
     assert_eq!(best.cost.0, 0, "unexpected overflow:\n{text}");
     for line in text.lines() {
         assert!(
-            pretty::cost::display_width(line) <= 40,
+            laidout::cost::display_width(line) <= 40,
             "line exceeds width: {line:?}"
         );
     }
