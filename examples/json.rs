@@ -11,7 +11,10 @@ fn main() {
         let cm = OverflowThenHeight { width };
         let g = greedy::layout(&cm, &doc, width);
         let best = frontier::best(&cm, &doc);
-        println!("== width {width}  greedy cost {:?}  optimal cost {:?}", g.cost, best.cost);
+        println!(
+            "== width {width}  greedy cost {:?}  optimal cost {:?}",
+            g.cost, best.cost
+        );
         println!("{}", to_string(&best.out));
         println!();
     }

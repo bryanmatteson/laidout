@@ -1,5 +1,11 @@
 # Handoff: extracting from the Go prototype
 
+> Extraction status (2026-07-18): backlog items 1-4 are implemented and
+> verified. Item 5 exposed a false premise in the prototype: its `Add` law is
+> not associative, so `src/measure.rs` contains the corrected line-shape
+> monoid and a regression for the counterexample. Item 6 is specified in
+> `docs/aligned-tables.md`; contextual callbacks remain deliberately excluded.
+
 **Source repo:** `~/Library/Mobile Documents/com~apple~CloudDocs/Code/pretty`
 (Go, known-broken, multiple overlapping rewrite attempts).
 **Destination:** this crate. All citations below are `path:startLine-endLine`
@@ -26,27 +32,27 @@ idea plus scaffolding to leave behind.
   instead of the Go trick of making `HardLine` its own lazy flat form
   (`:97-99`).
 
-### To take
+### Taken in this pass
 
 - **Combinator vocabulary.** `internal/layouter/document.go:101-126` —
-  `Space`, `Comma`, `LBrace`, `DQuote`, etc. Port as a `tokens` module when
-  real formatters land. Trivial, pure ergonomics.
+  `Space`, `Comma`, `LBrace`, `DQuote`, etc. Ported as classified constructor
+  functions in `src/tokens.rs` and used by the AST formatter.
 - **Text flags.** `internal/layouter/document.go:37-53`
   (`FlagWhitespace/FlagSymbol/FlagIndent/FlagNewline/FlagWord`, plus the
-  `FlagCustom` split at bit 32). Do not port the bitfield; port the intent —
-  text runs carry their kind — onto `TagId`s. This is the embryo of the
-  text-classification design that ended up in the koda-console proposal.
+  `FlagCustom` split at bit 32). The bitfield was not ported; `src/tags.rs`
+  defines built-in text-kind `TagId`s and reserves IDs from 32 for custom
+  formatter tags.
 - **`Structured()` raw-text lexer.** `internal/layouter/structured.go:13-106`.
   A no-regex state machine (word / symbol / whitespace / indent, states at
   `:23-28`, dispatch loop at `:54-101`) that turns arbitrary text into a
   document. This is the ingestion half of the fill/reflow story — the
   workload where the frontier engine should visibly beat greedy (greedy ties
-  it on JSON-style group nesting). Highest-priority port.
+  it on JSON-style group nesting). Ported as `src/text.rs`; `tests/text.rs`
+  proves a strict two-line optimal layout against greedy's three lines.
 - **`Indented` vs `Nested`** — `internal/layouter/document.go:147-153`
   (`Nested`: indent by offset) vs `:155-161` (`Indented`: indent to current
-  position, i.e. the classic `align` combinator). `Align` is missing from
-  the Rust algebra; cheap to add in the frontier engine (indent := current
-  column), expensive to bolt on later.
+  position, i.e. the classic `align` combinator). `Doc::Align` now has the
+  same current-column semantics in brute, greedy, and frontier engines.
 
 ### Take as an open research question, not code
 
@@ -75,37 +81,37 @@ idea plus scaffolding to leave behind.
 
 ## 2. `internal/doc` — take the measure monoid, discard its verdicts
 
-### Take
+### Taken or corrected in this pass
 
-- **`Measurement` and its composition law.**
-  `internal/doc/measure.go:3-9` (the measure: width, remaining, break,
-  height, last-line) and `:15-38` (`Measurement.Add` — the monoid append,
-  handling the broken/unbroken last-line cases). This is the same measure
-  Bernardy (ICFP 2017) builds Pareto frontiers over, and this composition
-  has already been debugged once. The current Rust engine is top-down and
-  carries only `last` per candidate (the cost model absorbs the rest); port
-  `Add` when building the bottom-up frontier variant for comparison.
+- **The intended measurement composition, corrected rather than copied.**
+  `internal/doc/measure.go:3-9` stores width, remaining space, break, height,
+  and last-line width; `:15-38` attempts to append them. The attempted law is
+  not associative for valid broken/text/broken fragments, so it cannot be a
+  monoid or safely support bottom-up reassociation. `src/measure.rs` replaces
+  it with the sufficient line-shape `(height, max-width, first-line,
+  last-line)` and an associative append law. The exact counterexample is a
+  unit test and associativity is property-tested.
 - **The memoization intent.** `internal/doc/document.go:3-7` (every
   `Document` must provide `Hash() uint64`); `internal/doc/context.go:14-19`
   (`LayoutKey{State, Next, Position, Mode}` — the memo key shape) and
   `:52-67` (`Chain.Layout`: cache lookup around continuation layout).
   Note: `internal/doc/cache.go` is an **empty file** (one `package` line) —
-  the caching all lives in `context.go`. The Rust engine memoizes on `Rc`
-  pointer identity, which only shares within one physically-shared tree;
-  structural hashing (hash-consing) turns rebuilt-but-equal subtrees
-  (every `", "` separator a formatter constructs) into memo hits. The
-  cleanest statement of per-node structural hashing is actually in the
+  the caching all lives in `context.go`. The Rust engine now structurally
+  interns documents before forming memo keys, so rebuilt-but-equal subtrees
+  (every `", "` separator a formatter constructs) share entries. The
+  cleanest prototype statement of per-node structural hashing is in the
   *other* package: `internal/doctype/hash.go:11-51`.
 - **The examples corpus.** `internal/doc/examples/json.go:17-142` — already
   ported to `src/corpus.rs` (minus the `maxInline` heuristic at `:57-64`,
   which an optimal engine makes obsolete).
-  Next: `internal/doc/examples/ast.go:43-166` (Go-like source formatting:
+  `internal/doc/examples/ast.go:43-166` is now ported (Go-like source formatting:
   `Stack`ed decls `:43-53`, grouped imports `:63-91`, function signatures
   with softline-wrapped params `:124-166`) — expression/signature trees
   produce the asymmetric choices where optimal visibly wins. The expected
   output is documented in the trailing comment `:199-216`.
-  `internal/doc/examples/sql.go` is 4 lines, effectively empty — nothing to
-  take, but `internal/doctype/sql_test.go:1-388` has SQL corpus material.
+  `internal/doc/examples/sql.go` is 4 lines, effectively empty; the usable
+  SQL formatter and complex query came from
+  `internal/doctype/sql_test.go:1-388` instead.
 
 ### Discard
 
@@ -140,7 +146,7 @@ is commented out — `internal/doctype/fluid.go:19-24` — and its
 `Chain`/`Layout`/`Measure` methods are stubs, `:33-43`). But it is the only
 place that answers "how does *unstructured* text become a document."
 
-### Take
+### Taken in this pass
 
 - **`StructuredText`.** `internal/doctype/fluid.go:144-241`. The complete
   ingestion state machine: word/symbol/indent lexing (`:193-232`), per-line
@@ -148,26 +154,28 @@ place that answers "how does *unstructured* text become a document."
   as `Union(Text(ws), Newline)` (`:174-175`): every inter-word gap is an
   independent break opportunity, which is fill/reflow semantics expressed in
   the plain algebra with no special `Fill` node. This plus
-  `layouter/structured.go` is the specification for a Rust `from_text`
-  builder.
+  `layouter/structured.go` is implemented by the Rust `from_text` builder.
 - **The line/group builder model.** `internal/doctype/fluid.go:54-142`
   (`textline`: indent + docs per line, `:54-76`; `GroupBuilder`: commit
   lines, diff indentation between consecutive lines, `:78-142`).
-  Half-finished (the `res < 0` dedent case at `:134-135` is an empty stub)
-  — take the shape, finish the logic in Rust.
+  Half-finished (the `res < 0` dedent case at `:134-135` is an empty stub).
+  The Rust builder uses a leading classified indent run plus `Align`, avoiding
+  that unfinished mutable indentation stack.
 - **`BuildIndentTree`.** `internal/doctype/indent.go:8-59` — group
   consecutive same-indent lines, join with `HardLine`, wrap on indent
   change; `applyIndentation` at `:62-84` (apply indent reps outside-in).
   Small, finished, and covered by `internal/doctype/indent_test.go:1-167`.
-  This is the import path for indented prose/source.
+  Its externally visible indentation behavior is covered by `tests/text.rs`.
 - **Structural hashing.** `internal/doctype/hash.go:11-51` — per-node-type
   hash builders (`DocText` hashes content+flags, `DocUnion` hashes both
   arms, `DocConcat` hashes the sequence). The template for hash-consed memo
   keys in the Rust engine (backlog item 3 below), together with the
-  `internal/hash` builder package it leans on.
+  `internal/hash` builder package it leans on. The frontier's structural
+  document interner is the Rust replacement.
 - **Test corpora.** `internal/doctype/fluid_test.go:1-215` and
-  `internal/doctype/sql_test.go:1-388` — harvest as fixtures even though the
-  implementations they exercise are abandoned.
+  `internal/doctype/sql_test.go:1-388` — harvested as `src/corpus/fluid.rs`
+  and `src/corpus/sql.rs`, with integration fixtures preserving the prose
+  round trip and the SQL formatter's documented 80-column output.
 
 ### Take only if round-tripping source text
 
@@ -187,21 +195,22 @@ place that answers "how does *unstructured* text become a document."
 
 ## Extraction backlog, in order
 
-1. **`from_text` fluid builder** — spec: `internal/doctype/fluid.go:144-241`
+1. **Done: `from_text` fluid builder** — spec: `internal/doctype/fluid.go:144-241`
    + `internal/layouter/structured.go:13-106` + `internal/doctype/indent.go:8-59`.
    Creates the per-word-choice workload where frontier beats greedy — the
    research result this crate exists to demonstrate.
-2. **`Align` node** — spec: `internal/layouter/document.go:155-161`
+2. **Done: `Align` node** — spec: `internal/layouter/document.go:155-161`
    (`Indented`).
-3. **Hash-consed memo keys** — spec: `internal/doctype/hash.go:11-51` +
+3. **Done: structural memo keys** — spec: `internal/doctype/hash.go:11-51` +
    `internal/doc/document.go:3-7`; replaces `Rc`-pointer identity in
    `src/frontier.rs`.
-4. **AST corpus** — port `internal/doc/examples/ast.go:43-166`.
-5. **Bernardy measure monoid** — port `internal/doc/measure.go:3-38`
-   (`Add` only, never `:40-54`) for a bottom-up frontier engine variant to
-   compare against the current top-down one.
-6. **Open question** — aligned tables without contextual callbacks;
-   requirements in `internal/layouter/table.go:11-23` and `:132-169`.
+4. **Done: AST corpus** — port `internal/doc/examples/ast.go:43-166`.
+5. **Done with correction: associative line-shape measure** — source attempt:
+   `internal/doc/measure.go:3-38`; replacement: `src/measure.rs`. The heuristic
+   verdicts at `:40-54` remain discarded.
+6. **Specified open question** — aligned tables without contextual callbacks;
+   requirements in `internal/layouter/table.go:11-23` and `:132-169`, with the
+   pure design boundary and verifier recorded in `docs/aligned-tables.md`.
 
 ## What already made the jump
 
@@ -213,4 +222,11 @@ place that answers "how does *unstructured* text become a document."
 | `doc/measure.go:40-54` heuristics | **replaced** by `src/cost.rs` (`CostModel`, incrementality contract) |
 | `layouter/document.go:253-259` (greedy `Fits`) | `src/greedy.rs` (continuation-aware, kept as baseline) |
 | `doc/examples/json.go:17-142` | `src/corpus.rs` (minus `maxInline`, `:57-64`) |
+| `doc/examples/ast.go:43-166` | `src/corpus/ast.rs` + `examples/ast.rs` |
+| `doctype/sql_test.go:1-388` | `src/corpus/sql.rs` + `tests/sql.rs` |
+| `doctype/fluid_test.go:1-215` | `src/corpus/fluid.rs` + `tests/fluid.rs` |
+| `doctype/fluid.go:144-241` + `layouter/structured.go:13-106` | `src/text.rs` (`from_text`) |
+| `layouter/document.go:155-161` (`Indented`) | `Doc::Align`, implemented by all engines |
+| `doctype/hash.go:11-51` | structural document interning in `src/frontier.rs` |
+| corrected line-shape composition | `src/measure.rs` (prototype `Add` rejected as non-associative) |
 | Tags orthogonal to layout (`doc/tags.go`, `layouter` `annotated`) | `Doc::Tag` + `Option<TagId>` on output spans |

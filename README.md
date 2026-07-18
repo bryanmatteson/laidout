@@ -12,13 +12,16 @@ One document algebra, one cost definition, three engines:
 
 | Module | Role |
 |---|---|
-| `doc` | The algebra: `Text`, `Line`, `Concat`, `Nest`, `Choice`, `Tag`. `Choice` is the primitive; `group` is sugar via `flatten`. |
+| `doc` | The algebra: `Text`, `Line`, `Concat`, `Nest`, `Align`, `Choice`, `Tag`. `Choice` is the primitive; `group` is sugar via `flatten`. |
 | `cost` | `CostModel` trait + default `OverflowThenHeight` (lexicographic squared-overflow, then line count). |
 | `render` | Shared output rope, line rendering, and `cost_of_lines` so all engines are measured identically. |
 | `brute` | Exhaustive enumeration of every choice assignment. Exponential. Ground truth. |
 | `greedy` | Wadler/Leijen first-fit with a continuation-aware `fits` scan. The baseline to beat. |
 | `frontier` | The engine under study: top-down search memoized on `(node, column, indent, tag)`, returning Pareto frontiers of `(cost, last-column)` candidates. |
-| `corpus` | JSON formatter ported from the Go prototype's examples, used as a realistic workload. |
+| `text` | `from_text`: classified raw-text ingestion with an independent break choice at every horizontal whitespace run. |
+| `tags` / `tokens` | Built-in text-kind tags and classified punctuation/whitespace constructors. |
+| `measure` | An associative `(height, widest, first, last)` line-shape monoid for bottom-up experiments. |
+| `corpus` | JSON, Go-like AST, SQL, and indented-prose corpora recovered from the prototype. The AST signature fixture contains a strict optimal-over-greedy case. |
 
 ## The cost-model contract
 
@@ -46,15 +49,34 @@ dominance sound.
    - `frontier <= greedy` on cost,
    - whitespace-stripped content identical across all engines and layouts,
    - streaming cost equals post-hoc line cost,
-   - byte-for-byte determinism.
+   - byte-for-byte determinism,
+   - associative measurement under tree reassociation.
 
 Run everything with `cargo test`.
+
+## Raw-text reflow
+
+`from_text` preserves physical newlines and leading indentation while turning
+horizontal whitespace into layout choices:
+
+```rust
+use pretty::{from_text, frontier, to_string, OverflowThenHeight};
+
+let doc = from_text("  a bb cccc");
+let best = frontier::best(&OverflowThenHeight { width: 6 }, &doc);
+assert_eq!(to_string(&best.out), "  a bb\n  cccc");
+```
+
+At width 6, first-fit greedy uses three lines for `a bb cccc`; the optimal
+frontier uses two. `tests/text.rs` locks that research result against the
+brute-force oracle where applicable.
 
 ## Notes and known simplifications
 
 - `display_width` counts chars; swap in `unicode-width` behind that single
   function when East Asian width / grapheme handling matters.
-- Memo keys use raw column values (no clamping past the width). The
+- Memo keys use structurally interned document IDs, so rebuilt-equal subtrees
+  share entries. Columns remain raw values (no clamping past the width). The
   Pretty-Expressive-style column clamp is the first performance lever to add
   when profiling on wider corpora.
 - A `Line` node always breaks; flat alternatives exist only through `Choice`
@@ -62,6 +84,9 @@ Run everything with `cargo test`.
   at the cost of Wadler's per-group flat mode being a derived notion.
 - Tags (`Doc::Tag`) are carried through to output spans and never affect
   layout, mirroring the semantic-token separation in the Go prototype.
+- General aligned tables remain a specified research boundary. The pure
+  alternatives and implementation STOP criteria are in
+  [`docs/aligned-tables.md`](docs/aligned-tables.md).
 
 ## Reading list
 

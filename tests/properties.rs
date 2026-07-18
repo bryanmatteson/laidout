@@ -6,7 +6,8 @@ use std::rc::Rc;
 use proptest::prelude::*;
 
 use pretty::cost::OverflowThenHeight;
-use pretty::doc::{concat2, count_choices, group, hardline, line, nest, tag, text, Doc};
+use pretty::doc::{align, concat2, count_choices, group, hardline, line, nest, tag, text, Doc};
+use pretty::measure::Measurement;
 use pretty::render::{cost_of_lines, to_lines};
 use pretty::{brute, frontier, greedy};
 
@@ -18,16 +19,17 @@ fn stripped(s: &str) -> String {
     s.chars().filter(|c| !c.is_whitespace()).collect()
 }
 
+fn arb_measurement() -> impl Strategy<Value = Measurement> {
+    prop::collection::vec(0u32..40, 1..8).prop_map(|widths| Measurement::from_line_widths(&widths))
+}
+
 fn arb_doc() -> impl Strategy<Value = Rc<Doc>> {
-    let leaf = prop_oneof![
-        "[a-z]{1,6}".prop_map(text),
-        Just(line()),
-        Just(hardline()),
-    ];
+    let leaf = prop_oneof!["[a-z]{1,6}".prop_map(text), Just(line()), Just(hardline()),];
     leaf.prop_recursive(4, 24, 3, |inner| {
         prop_oneof![
             (inner.clone(), inner.clone()).prop_map(|(a, b)| concat2(a, b)),
             (1u16..4, inner.clone()).prop_map(|(n, d)| nest(n, d)),
+            inner.clone().prop_map(align),
             inner.clone().prop_map(group),
             (0u32..3, inner).prop_map(|(t, d)| tag(t, d)),
         ]
@@ -88,5 +90,16 @@ proptest! {
         let b = frontier::best(&cm, &doc);
         prop_assert_eq!(pretty::to_string(&a.out), pretty::to_string(&b.out));
         prop_assert_eq!(a.cost, b.cost);
+    }
+
+
+    /// Bottom-up tree reassociation cannot change a fragment's measure.
+    #[test]
+    fn measurement_append_is_associative(
+        a in arb_measurement(),
+        b in arb_measurement(),
+        c in arb_measurement(),
+    ) {
+        prop_assert_eq!(a.append(b).append(c), a.append(b.append(c)));
     }
 }

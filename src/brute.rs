@@ -5,7 +5,7 @@
 use std::rc::Rc;
 
 use crate::cost::{display_width, CostModel};
-use crate::doc::{concat2, count_choices, nest, tag, Doc};
+use crate::doc::{align, concat2, count_choices, nest, tag, Doc};
 
 #[derive(Clone, Debug)]
 pub struct Rendering<C> {
@@ -35,6 +35,7 @@ fn expansions(doc: &Rc<Doc>) -> Vec<Rc<Doc>> {
             out
         }
         Doc::Nest(n, inner) => expansions(inner).into_iter().map(|d| nest(*n, d)).collect(),
+        Doc::Align(inner) => expansions(inner).into_iter().map(align).collect(),
         Doc::Tag(t, inner) => expansions(inner).into_iter().map(|d| tag(*t, d)).collect(),
         Doc::Choice(l, r) => {
             let mut out = expansions(l);
@@ -75,6 +76,7 @@ fn render_resolved<M: CostModel>(cm: &M, doc: &Rc<Doc>) -> Rendering<M::Cost> {
                 stack.push((indent, a.clone()));
             }
             Doc::Nest(n, inner) => stack.push((indent + u32::from(*n), inner.clone())),
+            Doc::Align(inner) => stack.push((col, inner.clone())),
             Doc::Tag(_, inner) => stack.push((indent, inner.clone())),
             Doc::Choice(..) => unreachable!("resolved documents contain no choices"),
         }

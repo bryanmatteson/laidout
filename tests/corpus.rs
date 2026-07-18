@@ -10,7 +10,11 @@ fn stripped(s: &str) -> String {
 
 #[test]
 fn small_array_breaks_exactly_when_needed() {
-    let doc = format(&Value::Arr(vec![Value::Int(1), Value::Int(2), Value::Int(3)]));
+    let doc = format(&Value::Arr(vec![
+        Value::Int(1),
+        Value::Int(2),
+        Value::Int(3),
+    ]));
 
     let wide = frontier::best(&OverflowThenHeight { width: 10 }, &doc);
     assert_eq!(to_string(&wide.out), "[1, 2, 3]");
@@ -25,7 +29,11 @@ fn complex_json_flat_at_generous_width() {
     let cm = OverflowThenHeight { width: 400 };
     let best = frontier::best(&cm, &doc);
     let text = to_string(&best.out);
-    assert_eq!(text.lines().count(), 1, "everything fits on one line:\n{text}");
+    assert_eq!(
+        text.lines().count(),
+        1,
+        "everything fits on one line:\n{text}"
+    );
     assert_eq!(best.cost.0, 0, "no overflow at width 400");
 }
 
@@ -69,7 +77,10 @@ fn subcorpus_matches_brute_force() {
         let cm = OverflowThenHeight { width };
         let oracle = brute::best(&cm, &doc, 16);
         let best = frontier::best(&cm, &doc);
-        assert_eq!(best.cost, oracle.cost, "width {width}: frontier is not optimal");
+        assert_eq!(
+            best.cost, oracle.cost,
+            "width {width}: frontier is not optimal"
+        );
     }
 }
 

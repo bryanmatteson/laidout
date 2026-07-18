@@ -18,11 +18,16 @@ pub mod cost;
 pub mod doc;
 pub mod frontier;
 pub mod greedy;
+pub mod measure;
 pub mod render;
+pub mod tags;
+pub mod text;
+pub mod tokens;
 
 pub use cost::{CostModel, OverflowThenHeight};
 pub use doc::{
-    choice, concat, concat2, count_choices, empty, flatten, group, hardline, join, line, nest,
-    softline, tag, text, Doc, TagId,
+    align, choice, concat, concat2, count_choices, empty, flatten, group, hardline, join, line,
+    nest, softline, tag, text, Doc, TagId,
 };
 pub use render::{to_lines, to_string, words};
+pub use text::from_text;

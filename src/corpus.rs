@@ -7,12 +7,17 @@ use std::rc::Rc;
 
 use crate::doc::{concat, group, join, nest, softline, tag, text, Doc, TagId};
 use crate::doc::{concat2, line};
+use crate::tags;
 
-pub const TAG_KEY: TagId = 1;
-pub const TAG_STRING: TagId = 2;
-pub const TAG_NUMBER: TagId = 3;
-pub const TAG_BOOL: TagId = 4;
-pub const TAG_PUNCT: TagId = 5;
+pub mod ast;
+pub mod fluid;
+pub mod sql;
+
+pub const TAG_KEY: TagId = tags::CUSTOM_START;
+pub const TAG_STRING: TagId = tags::CUSTOM_START + 1;
+pub const TAG_NUMBER: TagId = tags::CUSTOM_START + 2;
+pub const TAG_BOOL: TagId = tags::CUSTOM_START + 3;
+pub const TAG_PUNCT: TagId = tags::CUSTOM_START + 4;
 
 #[derive(Clone, Debug)]
 pub enum Value {
@@ -98,7 +103,10 @@ pub fn complex_value() -> Value {
         ("enabled".into(), Value::Bool(true)),
         (
             "tags".into(),
-            Value::Arr(vec![Value::Str("production".into()), Value::Str("v2".into())]),
+            Value::Arr(vec![
+                Value::Str("production".into()),
+                Value::Str("v2".into()),
+            ]),
         ),
     ])
 }

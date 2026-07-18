@@ -32,6 +32,7 @@ fn fits(width: u32, mut col: u32, mut frames: Vec<Frame>) -> bool {
                 frames.push((indent, tag, a.clone()));
             }
             Doc::Nest(n, inner) => frames.push((indent + u32::from(*n), tag, inner.clone())),
+            Doc::Align(inner) => frames.push((col, tag, inner.clone())),
             Doc::Tag(t, inner) => frames.push((indent, Some(*t), inner.clone())),
             Doc::Choice(preferred, _) => frames.push((indent, tag, preferred.clone())),
         }
@@ -66,11 +67,16 @@ pub fn layout<M: CostModel>(cm: &M, doc: &Rc<Doc>, width: u32) -> GreedyResult<M
                 stack.push((indent, tag, a.clone()));
             }
             Doc::Nest(n, inner) => stack.push((indent + u32::from(*n), tag, inner.clone())),
+            Doc::Align(inner) => stack.push((col, tag, inner.clone())),
             Doc::Tag(t, inner) => stack.push((indent, Some(*t), inner.clone())),
             Doc::Choice(preferred, alternative) => {
                 let mut probe = stack.clone();
                 probe.push((indent, tag, preferred.clone()));
-                let chosen = if fits(width, col, probe) { preferred } else { alternative };
+                let chosen = if fits(width, col, probe) {
+                    preferred
+                } else {
+                    alternative
+                };
                 stack.push((indent, tag, chosen.clone()));
             }
         }

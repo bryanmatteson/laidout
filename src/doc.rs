@@ -11,7 +11,7 @@ use std::rc::Rc;
 /// measurement or cost, they only annotate output spans.
 pub type TagId = u32;
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, Eq, Hash, PartialEq)]
 pub enum Doc {
     Empty,
     /// Text without line breaks.
@@ -19,10 +19,18 @@ pub enum Doc {
     /// A line break. `flat` is the flat projection used by `flatten`:
     /// `Some(" ")` for `line`, `Some("")` for `softline`, `None` for
     /// `hardline` (no flat form exists).
-    Line { flat: Option<Rc<str>> },
+    Line {
+        flat: Option<Rc<str>>,
+    },
     Concat(Rc<Doc>, Rc<Doc>),
     /// Adds to the indentation applied after line breaks inside.
     Nest(u16, Rc<Doc>),
+    /// Sets indentation after line breaks inside to the current column.
+    ///
+    /// This is the classic `align` combinator. Unlike [`nest`], its
+    /// indentation is determined when layout reaches the node rather than
+    /// when the document is constructed.
+    Align(Rc<Doc>),
     /// Layout alternative. Engines prefer the left branch on cost ties.
     Choice(Rc<Doc>, Rc<Doc>),
     Tag(TagId, Rc<Doc>),
@@ -41,11 +49,15 @@ pub fn text(s: impl AsRef<str>) -> Rc<Doc> {
 }
 
 pub fn line() -> Rc<Doc> {
-    Rc::new(Doc::Line { flat: Some(Rc::from(" ")) })
+    Rc::new(Doc::Line {
+        flat: Some(Rc::from(" ")),
+    })
 }
 
 pub fn softline() -> Rc<Doc> {
-    Rc::new(Doc::Line { flat: Some(Rc::from("")) })
+    Rc::new(Doc::Line {
+        flat: Some(Rc::from("")),
+    })
 }
 
 pub fn hardline() -> Rc<Doc> {
@@ -67,6 +79,10 @@ pub fn concat(docs: impl IntoIterator<Item = Rc<Doc>>) -> Rc<Doc> {
 
 pub fn nest(n: u16, d: Rc<Doc>) -> Rc<Doc> {
     Rc::new(Doc::Nest(n, d))
+}
+
+pub fn align(d: Rc<Doc>) -> Rc<Doc> {
+    Rc::new(Doc::Align(d))
 }
 
 pub fn choice(preferred: Rc<Doc>, alternative: Rc<Doc>) -> Rc<Doc> {
@@ -98,6 +114,7 @@ pub fn flatten(d: &Rc<Doc>) -> Option<Rc<Doc>> {
         Doc::Concat(a, b) => Some(concat2(flatten(a)?, flatten(b)?)),
         // Indentation only manifests after breaks; a flat form has none.
         Doc::Nest(_, inner) => flatten(inner),
+        Doc::Align(inner) => flatten(inner).map(align),
         Doc::Choice(preferred, _) => flatten(preferred),
         Doc::Tag(t, inner) => Some(tag(*t, flatten(inner)?)),
     }
@@ -117,7 +134,7 @@ pub fn count_choices(d: &Doc) -> usize {
     match d {
         Doc::Empty | Doc::Text(_) | Doc::Line { .. } => 0,
         Doc::Concat(a, b) => count_choices(a) + count_choices(b),
-        Doc::Nest(_, inner) | Doc::Tag(_, inner) => count_choices(inner),
+        Doc::Nest(_, inner) | Doc::Align(inner) | Doc::Tag(_, inner) => count_choices(inner),
         Doc::Choice(l, r) => 1 + count_choices(l) + count_choices(r),
     }
 }
