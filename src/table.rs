@@ -65,6 +65,8 @@ impl Column {
 pub enum TableError {
     NonFlattenableHeader { column: usize },
     NonFlattenableCell { row: usize, column: usize },
+    ChoiceBearingHeader { column: usize },
+    ChoiceBearingCell { row: usize, column: usize },
 }
 
 impl fmt::Display for TableError {
@@ -79,6 +81,14 @@ impl fmt::Display for TableError {
                     "table cell at row {row}, column {column} has no flat projection"
                 )
             }
+            Self::ChoiceBearingHeader { column } => write!(
+                f,
+                "table header at column {column} contains a layout choice"
+            ),
+            Self::ChoiceBearingCell { row, column } => write!(
+                f,
+                "table cell at row {row}, column {column} contains a layout choice"
+            ),
         }
     }
 }
@@ -145,6 +155,9 @@ impl Table {
                 .iter()
                 .enumerate()
                 .map(|(column, spec)| match &spec.header {
+                    Some(doc) if contains_choice(doc) => {
+                        Err(TableError::ChoiceBearingHeader { column })
+                    }
                     Some(doc) => {
                         flatten_cell(doc).ok_or(TableError::NonFlattenableHeader { column })
                     }
@@ -166,7 +179,11 @@ impl Table {
                     .iter()
                     .enumerate()
                     .map(|(column, doc)| {
-                        flatten_cell(doc).ok_or(TableError::NonFlattenableCell { row, column })
+                        if contains_choice(doc) {
+                            Err(TableError::ChoiceBearingCell { row, column })
+                        } else {
+                            flatten_cell(doc).ok_or(TableError::NonFlattenableCell { row, column })
+                        }
                     })
                     .collect::<Result<Vec<_>, _>>()
             })
@@ -222,6 +239,15 @@ fn flatten_cell(doc: &Rc<Doc>) -> Option<FlatCell> {
     let doc = flatten(doc)?;
     let width = flat_width(&doc)?;
     Some(FlatCell { doc, width })
+}
+
+fn contains_choice(doc: &Doc) -> bool {
+    match doc {
+        Doc::Empty | Doc::Text(_) | Doc::Line { .. } => false,
+        Doc::Concat(left, right) => contains_choice(left) || contains_choice(right),
+        Doc::Nest(_, inner) | Doc::Align(inner) | Doc::Tag(_, inner) => contains_choice(inner),
+        Doc::Choice(_, _) => true,
+    }
 }
 
 fn flat_width(doc: &Doc) -> Option<u32> {

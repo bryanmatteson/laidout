@@ -93,12 +93,14 @@ let doc = table([
 
 The compact branch aligns columns; the fallback stacks cells when compact
 layout would overflow. Non-flattenable headers and cells return a
-coordinate-bearing `TableError`.
+coordinate-bearing `TableError`. Choice-bearing cells are also rejected: the
+static compiler never silently discards a cell's layout alternatives.
 
 ## Notes and known simplifications
 
-- `display_width` counts chars; swap in `unicode-width` behind that single
-  function when East Asian width / grapheme handling matters.
+- `display_width` uses Unicode terminal-column width, including East Asian wide
+  characters and zero-width combining marks, and every engine measures through
+  that shared function.
 - Memo keys use structurally interned document IDs, so rebuilt-equal subtrees
   share entries. Columns remain raw values (no clamping past the width). The
   Pretty-Expressive-style column clamp is the first performance lever to add

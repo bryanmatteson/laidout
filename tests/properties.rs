@@ -36,6 +36,24 @@ fn arb_doc() -> impl Strategy<Value = Rc<Doc>> {
     })
 }
 
+#[test]
+fn unicode_terminal_width_is_consistent_across_all_engines() {
+    let doc = group(concat2(text("界"), concat2(line(), text("e\u{301}"))));
+    let cm = OverflowThenHeight { width: 2 };
+
+    let oracle = brute::best(&cm, &doc, count_choices(&doc));
+    let greedy = greedy::layout(&cm, &doc, 2);
+    let best = frontier::best(&cm, &doc);
+    let best_lines = to_lines(&best.out);
+
+    assert_eq!(oracle.text(), "界\ne\u{301}");
+    assert_eq!(greedy.lines, best_lines);
+    assert_eq!(pretty::to_string(&best.out), oracle.text());
+    assert_eq!(greedy.cost, oracle.cost);
+    assert_eq!(best.cost, oracle.cost);
+    assert_eq!(cost_of_lines(&cm, &best_lines), best.cost);
+}
+
 proptest! {
     /// The frontier engine is optimal: it matches exhaustive enumeration.
     #[test]

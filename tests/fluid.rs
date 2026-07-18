@@ -16,5 +16,7 @@ fn recovered_prose_round_trips_wide_and_reflows_without_overflow() {
     assert_eq!(best.cost.0, 0);
     assert!(best.cost <= greedy.cost);
     assert_eq!(words(&rendered), words(PROSE));
-    assert!(rendered.lines().all(|line| line.chars().count() <= 40));
+    assert!(rendered
+        .lines()
+        .all(|line| pretty::cost::display_width(line) <= 40));
 }

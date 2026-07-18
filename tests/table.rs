@@ -1,8 +1,8 @@
 use pretty::cost::OverflowThenHeight;
 use pretty::render::Out;
 use pretty::{
-    brute, concat, count_choices, frontier, greedy, hardline, table, tag, text, to_string,
-    Alignment, Column, Table, TableError,
+    brute, choice, concat, count_choices, frontier, greedy, hardline, line, table, tag, text,
+    to_string, Alignment, Column, Table, TableError,
 };
 use proptest::prelude::*;
 
@@ -65,14 +65,18 @@ fn missing_column_specs_use_two_space_left_aligned_defaults() {
 }
 
 #[test]
-fn non_ascii_width_is_not_measured_as_utf8_byte_length() {
-    let doc = table([Column::labeled(text("é")), Column::labeled(text("H"))])
-        .header()
-        .row([text("x"), text("z")])
-        .build()
-        .unwrap();
+fn unicode_terminal_width_aligns_wide_and_combining_text() {
+    let doc = table([
+        Column::labeled(text("界")),
+        Column::labeled(text("e\u{301}")),
+        Column::labeled(text("H")),
+    ])
+    .header()
+    .row([text("x"), text("y"), text("z")])
+    .build()
+    .unwrap();
     let best = frontier::best(&OverflowThenHeight { width: 80 }, &doc);
-    assert_eq!(to_string(&best.out), "é  H\nx  z");
+    assert_eq!(to_string(&best.out), "界  e\u{301}  H\nx   y  z");
 }
 
 #[test]
@@ -159,6 +163,35 @@ fn non_flattenable_headers_and_cells_report_their_coordinates() {
         cell_error,
         Err(TableError::NonFlattenableCell { row: 0, column: 1 })
     );
+}
+
+#[test]
+fn choice_bearing_headers_and_cells_are_rejected_without_losing_alternatives() {
+    let header_error = table([Column::labeled(choice(text("wide"), text("narrow")))])
+        .header()
+        .build();
+    assert_eq!(
+        header_error,
+        Err(TableError::ChoiceBearingHeader { column: 0 })
+    );
+
+    let cell_error = table([Column::new(), Column::new()])
+        .row([
+            text("ok"),
+            tag(7, concat([text("nested"), choice(text("a"), text("b"))])),
+        ])
+        .build();
+    assert_eq!(
+        cell_error,
+        Err(TableError::ChoiceBearingCell { row: 0, column: 1 })
+    );
+
+    let choice_free_projection = table([Column::new()])
+        .row([concat([text("a"), line(), text("b")])])
+        .build()
+        .unwrap();
+    let best = frontier::best(&OverflowThenHeight { width: 80 }, &choice_free_projection);
+    assert_eq!(to_string(&best.out), "a b");
 }
 
 proptest! {

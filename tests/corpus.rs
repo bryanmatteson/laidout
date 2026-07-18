@@ -94,6 +94,9 @@ fn complex_json_readable_at_40() {
     // and must not break lines it doesn't have to.
     assert_eq!(best.cost.0, 0, "unexpected overflow:\n{text}");
     for line in text.lines() {
-        assert!(line.chars().count() <= 40, "line exceeds width: {line:?}");
+        assert!(
+            pretty::cost::display_width(line) <= 40,
+            "line exceeds width: {line:?}"
+        );
     }
 }

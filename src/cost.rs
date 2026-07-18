@@ -9,6 +9,8 @@
 
 use std::fmt::Debug;
 
+use unicode_width::UnicodeWidthStr;
+
 pub trait CostModel {
     type Cost: Clone + Ord + Debug;
 
@@ -61,9 +63,19 @@ impl CostModel for OverflowThenHeight {
     }
 }
 
-/// Display width of a text run. ASCII-oriented for the research core;
-/// swapping in `unicode-width` here is a mechanical change because every
-/// engine measures through this one function.
+/// Terminal display width of a text run according to Unicode width rules.
 pub fn display_width(s: &str) -> u32 {
-    s.chars().count() as u32
+    u32::try_from(UnicodeWidthStr::width(s)).expect("text display width exceeds u32::MAX")
+}
+
+#[cfg(test)]
+mod tests {
+    use super::display_width;
+
+    #[test]
+    fn display_width_counts_terminal_columns() {
+        assert_eq!(display_width("ascii"), 5);
+        assert_eq!(display_width("界"), 2);
+        assert_eq!(display_width("e\u{301}"), 1);
+    }
 }
