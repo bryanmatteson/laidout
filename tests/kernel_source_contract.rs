@@ -106,6 +106,17 @@ fn benchmark_transition_parser_is_document_aware() {
     let source = include_str!("../benches/support/harness_v1.rs");
     assert!(source.contains("toml::from_str(&transition_text)"));
     assert!(!source.contains("let transition: toml::Value = fs::read_to_string"));
+    assert!(source.contains("38c55341e02fd9e4869e060d36e88886c7ed1ea3:src"));
+    assert!(source.contains("38c55341e02fd9e4869e060d36e88886c7ed1ea3:Cargo.toml"));
+    let production_identity = source
+        .split_once("fn production_source_digest")
+        .expect("production source identity function")
+        .1
+        .split_once("fn sha256_path")
+        .expect("bounded production source identity function")
+        .0;
+    assert!(!production_identity.contains("\"HEAD:src\""));
+    assert!(!production_identity.contains("\"HEAD:Cargo.toml\""));
 
     let transition: toml::Value = toml::from_str(include_str!(
         "../docs/benchmark-dependency-transition-0.2.toml"

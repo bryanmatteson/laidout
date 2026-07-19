@@ -1097,8 +1097,17 @@ fn normalized_dependency_graph(
 
 fn production_source_digest(role: &str) -> Result<String, String> {
     if role == "baseline" {
-        let source = command("git", &["rev-parse", "HEAD:src"])?;
-        let manifest = command("git", &["rev-parse", "HEAD:Cargo.toml"])?;
+        let source = command(
+            "git",
+            &["rev-parse", "38c55341e02fd9e4869e060d36e88886c7ed1ea3:src"],
+        )?;
+        let manifest = command(
+            "git",
+            &[
+                "rev-parse",
+                "38c55341e02fd9e4869e060d36e88886c7ed1ea3:Cargo.toml",
+            ],
+        )?;
         return sha256_bytes(format!("src\t{source}\nmanifest\t{manifest}\n").as_bytes());
     }
     let mut files = vec![PathBuf::from("Cargo.toml")];
