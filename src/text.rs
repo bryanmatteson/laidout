@@ -6,10 +6,30 @@
 //! makes reflowed lines return to the source line's content column.
 
 use std::mem;
+use std::num::NonZeroU8;
 use std::rc::Rc;
 
-use crate::doc::{align, choice, concat, hardline, line, tag, text, Doc, TagId};
+use crate::doc::{
+    align, choice, concat, hardline, line, measured_columns, tag, try_text_with, Doc, TagId,
+    TextError, WidthMode,
+};
 use crate::tags;
+
+/// Policy for normalizing raw text into measured document runs.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub struct IngestOptions {
+    pub width_mode: WidthMode,
+    pub tab_width: NonZeroU8,
+}
+
+impl Default for IngestOptions {
+    fn default() -> Self {
+        Self {
+            width_mode: WidthMode::Narrow,
+            tab_width: NonZeroU8::new(8).expect("eight is nonzero"),
+        }
+    }
+}
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 enum Kind {
@@ -34,15 +54,20 @@ fn is_word_char(ch: char, previous: Option<char>) -> bool {
         || ((ch == '\'' || ch == '\u{2019}') && previous.is_some_and(char::is_alphabetic))
 }
 
-fn classified(kind: Kind, value: &str) -> Rc<Doc> {
-    tag(kind.tag(), text(value))
+fn classified(kind: Kind, value: &str, width_mode: WidthMode) -> Result<Rc<Doc>, TextError> {
+    Ok(tag(kind.tag(), try_text_with(value, width_mode)?))
 }
 
-fn flush(docs: &mut Vec<Rc<Doc>>, buffer: &mut String, kind: Option<Kind>) {
+fn flush(
+    docs: &mut Vec<Rc<Doc>>,
+    buffer: &mut String,
+    kind: Option<Kind>,
+    width_mode: WidthMode,
+) -> Result<(), TextError> {
     if let Some(kind) = kind {
         if !buffer.is_empty() {
             let value = mem::take(buffer);
-            let run = classified(kind, &value);
+            let run = classified(kind, &value, width_mode)?;
             docs.push(if kind == Kind::Whitespace {
                 choice(run, tag(tags::NEWLINE, line()))
             } else {
@@ -50,16 +75,17 @@ fn flush(docs: &mut Vec<Rc<Doc>>, buffer: &mut String, kind: Option<Kind>) {
             });
         }
     }
+    Ok(())
 }
 
-fn content_doc(content: &str) -> Rc<Doc> {
+fn content_doc(content: &str, width_mode: WidthMode) -> Result<Rc<Doc>, TextError> {
     let mut docs = Vec::new();
     let mut buffer = String::new();
     let mut kind = None;
     let mut previous = None;
 
     for ch in content.chars() {
-        let next_kind = if ch == ' ' || ch == '\t' {
+        let next_kind = if ch == ' ' {
             Kind::Whitespace
         } else if is_word_char(ch, previous) {
             Kind::Word
@@ -70,54 +96,107 @@ fn content_doc(content: &str) -> Rc<Doc> {
         // Symbols are deliberately one run per character, matching the Go
         // lexer and making punctuation independently taggable.
         if kind != Some(next_kind) || next_kind == Kind::Symbol {
-            flush(&mut docs, &mut buffer, kind);
+            flush(&mut docs, &mut buffer, kind, width_mode)?;
             kind = Some(next_kind);
         }
         buffer.push(ch);
         if next_kind == Kind::Symbol {
-            flush(&mut docs, &mut buffer, kind);
+            flush(&mut docs, &mut buffer, kind, width_mode)?;
             kind = None;
         }
         previous = Some(ch);
     }
-    flush(&mut docs, &mut buffer, kind);
-    concat(docs)
+    flush(&mut docs, &mut buffer, kind, width_mode)?;
+    Ok(concat(docs))
 }
 
-fn line_doc(source_line: &str) -> Rc<Doc> {
+fn line_doc(source_line: &str, width_mode: WidthMode) -> Result<Rc<Doc>, TextError> {
     let indent_end = source_line
         .char_indices()
-        .find_map(|(index, ch)| (ch != ' ' && ch != '\t').then_some(index))
+        .find_map(|(index, ch)| (ch != ' ').then_some(index))
         .unwrap_or(source_line.len());
     let (leading, content) = source_line.split_at(indent_end);
     if leading.is_empty() {
-        align(content_doc(content))
+        Ok(align(content_doc(content, width_mode)?))
     } else {
-        concat([
-            tag(tags::INDENT, text(leading)),
-            align(content_doc(content)),
-        ])
+        Ok(concat([
+            tag(tags::INDENT, try_text_with(leading, width_mode)?),
+            align(content_doc(content, width_mode)?),
+        ]))
     }
+}
+
+fn normalize(input: &str, options: IngestOptions) -> Result<String, TextError> {
+    let mut normalized = String::with_capacity(input.len());
+    let mut source_line = String::new();
+    let mut source_columns = 0u32;
+    let mut chars = input.char_indices().peekable();
+
+    while let Some((byte_offset, character)) = chars.next() {
+        match character {
+            '\r' => {
+                if chars.peek().is_some_and(|(_, next)| *next == '\n') {
+                    chars.next();
+                }
+                normalized.push('\n');
+                source_line.clear();
+                source_columns = 0;
+            }
+            '\n' => {
+                normalized.push('\n');
+                source_line.clear();
+                source_columns = 0;
+            }
+            '\t' => {
+                let tab_width = u32::from(options.tab_width.get());
+                let spaces = tab_width - (source_columns % tab_width);
+                source_columns = source_columns
+                    .checked_add(spaces)
+                    .ok_or(TextError::DisplayWidthOverflow { byte_offset })?;
+                for _ in 0..spaces {
+                    normalized.push(' ');
+                    source_line.push(' ');
+                }
+            }
+            _ if character.is_control() => {
+                return Err(TextError::ControlCharacter {
+                    character,
+                    byte_offset,
+                });
+            }
+            _ => {
+                normalized.push(character);
+                source_line.push(character);
+                source_columns = measured_columns(&source_line, options.width_mode, byte_offset)?;
+            }
+        }
+    }
+
+    Ok(normalized)
 }
 
 /// Convert arbitrary text into a reflowable document.
 ///
-/// Wide layouts reproduce the input byte-for-byte except that CRLF line
-/// endings are normalized to LF. Narrow layouts may replace horizontal
-/// whitespace inside a physical line with a line break. Empty lines and a
-/// trailing newline are preserved.
-pub fn from_text(input: &str) -> Rc<Doc> {
+/// Wide layouts reproduce normalized input: carriage returns become line
+/// feeds and tabs expand to configured source-line tab stops. Narrow layouts
+/// may replace horizontal whitespace inside a physical line with a break.
+pub fn from_text(input: &str) -> Result<Rc<Doc>, TextError> {
+    from_text_with(input, IngestOptions::default())
+}
+
+/// Convert arbitrary text under an explicit width and tab-stop policy.
+pub fn from_text_with(input: &str, options: IngestOptions) -> Result<Rc<Doc>, TextError> {
     if input.is_empty() {
-        return crate::doc::empty();
+        return Ok(crate::doc::empty());
     }
 
-    let normalized = input.replace("\r\n", "\n");
+    let normalized = normalize(input, options)?;
     let mut docs = Vec::new();
     for (index, source_line) in normalized.split('\n').enumerate() {
         if index > 0 {
             docs.push(hardline());
         }
-        docs.push(line_doc(source_line));
+        docs.push(line_doc(source_line, options.width_mode)?);
     }
-    concat(docs)
+    Ok(concat(docs))
 }

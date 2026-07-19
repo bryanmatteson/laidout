@@ -4,12 +4,18 @@
 
 use std::rc::Rc;
 
-use crate::cost::{display_width, CostModel};
-use crate::doc::{align, concat2, count_choices, nest, tag, Doc};
+use crate::cost::CostModel;
+use crate::doc::{align, concat2, count_choices, nest, penalize, tag, Doc, TagId};
+use crate::render::{
+    materialize, out_cat, out_empty, out_newline, out_penalty, out_tagged, out_text, to_lines,
+    AnnotationSpan, Out,
+};
 
 #[derive(Clone, Debug)]
 pub struct Rendering<C> {
     pub cost: C,
+    pub out: Rc<Out>,
+    pub spans: Vec<AnnotationSpan>,
     pub lines: Vec<String>,
 }
 
@@ -37,6 +43,10 @@ fn expansions(doc: &Rc<Doc>) -> Vec<Rc<Doc>> {
         Doc::Nest(n, inner) => expansions(inner).into_iter().map(|d| nest(*n, d)).collect(),
         Doc::Align(inner) => expansions(inner).into_iter().map(align).collect(),
         Doc::Tag(t, inner) => expansions(inner).into_iter().map(|d| tag(*t, d)).collect(),
+        Doc::Penalty { amount, doc } => expansions(doc)
+            .into_iter()
+            .map(|d| penalize(*amount, d))
+            .collect(),
         Doc::Choice(l, r) => {
             let mut out = expansions(l);
             out.extend(expansions(r));
@@ -47,42 +57,81 @@ fn expansions(doc: &Rc<Doc>) -> Vec<Rc<Doc>> {
 
 /// Render a choice-free document, accumulating cost with the model.
 fn render_resolved<M: CostModel>(cm: &M, doc: &Rc<Doc>) -> Rendering<M::Cost> {
-    let mut lines = vec![String::new()];
-    let mut cost = cm.zero();
     let mut col: u32 = 0;
-    let mut stack: Vec<(u32, Rc<Doc>)> = vec![(0, doc.clone())];
+    let mut outputs = vec![out_empty()];
 
-    while let Some((indent, d)) = stack.pop() {
+    enum Action {
+        Visit(u32, Rc<Doc>),
+        CloseTag(TagId),
+    }
+
+    let mut stack = vec![Action::Visit(0, doc.clone())];
+
+    while let Some(action) = stack.pop() {
+        let (indent, d) = match action {
+            Action::CloseTag(tag) => {
+                let inner = outputs.pop().expect("tag output frame exists");
+                let tagged = out_tagged(tag, inner);
+                let parent = outputs.last_mut().expect("parent output frame exists");
+                *parent = out_cat(parent.clone(), tagged);
+                continue;
+            }
+            Action::Visit(indent, d) => (indent, d),
+        };
+
         match &*d {
             Doc::Empty => {}
-            Doc::Text(s) => {
-                let w = display_width(s);
-                cost = cm.add(&cost, &cm.text(col, w));
-                col += w;
-                lines.last_mut().unwrap().push_str(s);
+            Doc::Text(run) => {
+                col = col
+                    .checked_add(run.columns())
+                    .expect("brute-force layout column overflow");
+                let parent = outputs.last_mut().expect("output frame exists");
+                *parent = out_cat(parent.clone(), out_text(run.clone()));
             }
             Doc::Line { .. } => {
-                cost = cm.add(&cost, &cm.newline());
-                cost = cm.add(&cost, &cm.text(0, indent));
                 col = indent;
-                let mut line = String::new();
-                for _ in 0..indent {
-                    line.push(' ');
-                }
-                lines.push(line);
+                let parent = outputs.last_mut().expect("output frame exists");
+                *parent = out_cat(parent.clone(), out_newline(indent));
             }
             Doc::Concat(a, b) => {
-                stack.push((indent, b.clone()));
-                stack.push((indent, a.clone()));
+                stack.push(Action::Visit(indent, b.clone()));
+                stack.push(Action::Visit(indent, a.clone()));
             }
-            Doc::Nest(n, inner) => stack.push((indent + u32::from(*n), inner.clone())),
-            Doc::Align(inner) => stack.push((col, inner.clone())),
-            Doc::Tag(_, inner) => stack.push((indent, inner.clone())),
+            Doc::Nest(n, inner) => {
+                stack.push(Action::Visit(
+                    indent
+                        .checked_add(u32::from(*n))
+                        .expect("brute-force indentation overflow"),
+                    inner.clone(),
+                ));
+            }
+            Doc::Align(inner) => stack.push(Action::Visit(col, inner.clone())),
+            Doc::Tag(tag, inner) => {
+                outputs.push(out_empty());
+                stack.push(Action::CloseTag(*tag));
+                stack.push(Action::Visit(indent, inner.clone()));
+            }
+            Doc::Penalty { amount, doc } => {
+                let parent = outputs.last_mut().expect("output frame exists");
+                *parent = out_cat(parent.clone(), out_penalty(*amount));
+                stack.push(Action::Visit(indent, doc.clone()));
+            }
             Doc::Choice(..) => unreachable!("resolved documents contain no choices"),
         }
     }
 
-    Rendering { cost, lines }
+    let out = outputs.pop().expect("root output frame exists");
+    debug_assert!(outputs.is_empty());
+    let rendered = materialize(cm, &out, crate::frontier::SolveStats::default());
+    let cost = rendered.cost;
+    let spans = rendered.spans;
+    let lines = to_lines(&out);
+    Rendering {
+        cost,
+        out,
+        spans,
+        lines,
+    }
 }
 
 /// Minimum-cost rendering over all layouts. Ties keep the earliest

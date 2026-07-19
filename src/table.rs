@@ -9,7 +9,6 @@ use std::error::Error;
 use std::fmt;
 use std::rc::Rc;
 
-use crate::cost::display_width;
 use crate::doc::{align, choice, concat, empty, flatten, hardline, join, Doc};
 use crate::tokens;
 
@@ -61,6 +60,7 @@ impl Column {
     }
 }
 
+#[non_exhaustive]
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub enum TableError {
     NonFlattenableHeader { column: usize },
@@ -245,7 +245,10 @@ fn contains_choice(doc: &Doc) -> bool {
     match doc {
         Doc::Empty | Doc::Text(_) | Doc::Line { .. } => false,
         Doc::Concat(left, right) => contains_choice(left) || contains_choice(right),
-        Doc::Nest(_, inner) | Doc::Align(inner) | Doc::Tag(_, inner) => contains_choice(inner),
+        Doc::Nest(_, inner)
+        | Doc::Align(inner)
+        | Doc::Tag(_, inner)
+        | Doc::Penalty { doc: inner, .. } => contains_choice(inner),
         Doc::Choice(_, _) => true,
     }
 }
@@ -253,11 +256,14 @@ fn contains_choice(doc: &Doc) -> bool {
 fn flat_width(doc: &Doc) -> Option<u32> {
     match doc {
         Doc::Empty => Some(0),
-        Doc::Text(value) => Some(display_width(value)),
-        Doc::Line { flat: Some(value) } => Some(display_width(value)),
+        Doc::Text(value) => Some(value.columns()),
+        Doc::Line { flat: Some(value) } => Some(value.columns()),
         Doc::Line { flat: None } => None,
         Doc::Concat(left, right) => flat_width(left)?.checked_add(flat_width(right)?),
-        Doc::Nest(_, inner) | Doc::Align(inner) | Doc::Tag(_, inner) => flat_width(inner),
+        Doc::Nest(_, inner)
+        | Doc::Align(inner)
+        | Doc::Tag(_, inner)
+        | Doc::Penalty { doc: inner, .. } => flat_width(inner),
         Doc::Choice(preferred, _) => flat_width(preferred),
     }
 }
@@ -278,7 +284,9 @@ fn compact_row(row: &[FlatCell], columns: &[Column], widths: &[u32]) -> Rc<Doc> 
         };
         let has_later_cell = column + 1 < row.len();
         let trailing = if has_later_cell {
-            after + u32::from(columns[column].min_padding)
+            after
+                .checked_add(u32::from(columns[column].min_padding))
+                .expect("table padding width overflow")
         } else {
             0
         };

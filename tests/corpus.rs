@@ -3,6 +3,7 @@
 use laidout::corpus::{complex_value, format, Value};
 use laidout::cost::OverflowThenHeight;
 use laidout::{brute, frontier, greedy, to_string};
+use num_bigint::BigUint;
 
 fn stripped(s: &str) -> String {
     s.chars().filter(|c| !c.is_whitespace()).collect()
@@ -34,7 +35,7 @@ fn complex_json_flat_at_generous_width() {
         1,
         "everything fits on one line:\n{text}"
     );
-    assert_eq!(best.cost.0, 0, "no overflow at width 400");
+    assert_eq!(best.cost.0, BigUint::from(0u8), "no overflow at width 400");
 }
 
 #[test]
@@ -92,7 +93,11 @@ fn complex_json_readable_at_40() {
     let text = to_string(&best.out);
     // No overflow is achievable at 40, so the optimum must have none —
     // and must not break lines it doesn't have to.
-    assert_eq!(best.cost.0, 0, "unexpected overflow:\n{text}");
+    assert_eq!(
+        best.cost.0,
+        BigUint::from(0u8),
+        "unexpected overflow:\n{text}"
+    );
     for line in text.lines() {
         assert!(
             laidout::cost::display_width(line) <= 40,

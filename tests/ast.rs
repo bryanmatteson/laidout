@@ -1,6 +1,7 @@
 use laidout::corpus::ast::{asymmetric_file, sample_file, Formatter};
 use laidout::cost::OverflowThenHeight;
 use laidout::{brute, count_choices, frontier, greedy, to_string};
+use num_bigint::BigUint;
 
 #[test]
 fn sample_matches_the_documented_go_like_shape() {
@@ -35,8 +36,8 @@ fn asymmetric_signature_is_a_strict_frontier_win() {
     let best = frontier::best(&cm, &doc);
     let oracle = brute::best(&cm, &doc, count_choices(&doc));
 
-    assert_eq!(greedy.cost, (0, 10));
-    assert_eq!(best.cost, (0, 7));
+    assert_eq!(greedy.cost, (BigUint::from(0u8), 10));
+    assert_eq!(best.cost, (BigUint::from(0u8), 7));
     assert!(best.cost < greedy.cost);
     assert_eq!(best.cost, oracle.cost);
     assert_eq!(

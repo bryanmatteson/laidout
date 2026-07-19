@@ -1,9 +1,10 @@
 use laidout::cost::OverflowThenHeight;
-use laidout::render::Out;
 use laidout::{
     brute, choice, concat, count_choices, frontier, greedy, hardline, line, table, tag, text,
-    to_string, Alignment, Column, Table, TableError,
+    to_string, try_text_with, Alignment, AnnotationSpan, Column, SolveLimits, Table, TableError,
+    WidthMode,
 };
+use num_bigint::BigUint;
 use proptest::prelude::*;
 
 fn aligned_table() -> std::rc::Rc<laidout::Doc> {
@@ -19,17 +20,6 @@ fn aligned_table() -> std::rc::Rc<laidout::Doc> {
     .row([text("β"), text("123")])
     .build()
     .unwrap()
-}
-
-fn tagged_runs(out: &Out, runs: &mut Vec<(String, Option<u32>)>) {
-    match out {
-        Out::Empty | Out::Newline(_) => {}
-        Out::Text(value, tag) => runs.push((value.to_string(), *tag)),
-        Out::Cat(left, right) => {
-            tagged_runs(left, runs);
-            tagged_runs(right, runs);
-        }
-    }
 }
 
 #[test]
@@ -50,7 +40,7 @@ fn the_same_table_uses_its_stacked_fallback_when_compact_overflows() {
         to_string(&best.out),
         "NAME\nCOUNT\nSTATE\nalpha\n7\non\nβ\n123"
     );
-    assert_eq!(best.cost.0, 0);
+    assert_eq!(best.cost.0, BigUint::from(0u8));
 }
 
 #[test]
@@ -98,25 +88,68 @@ fn tags_survive_compact_padding_and_fallback_layouts() {
         .build()
         .unwrap();
 
-    let compact = frontier::best(&OverflowThenHeight { width: 80 }, &doc);
-    let mut compact_runs = Vec::new();
-    tagged_runs(&compact.out, &mut compact_runs);
+    let compact = laidout::render_with(
+        &doc,
+        &OverflowThenHeight { width: 80 },
+        SolveLimits::default(),
+    )
+    .unwrap();
     assert_eq!(
-        compact_runs,
+        compact.spans,
         vec![
-            ("a".into(), Some(100)),
-            ("  ".into(), Some(laidout::tags::WHITESPACE)),
-            ("b".into(), Some(101)),
+            AnnotationSpan {
+                tag: 100,
+                range: 0..1,
+                parent: None,
+            },
+            AnnotationSpan {
+                tag: laidout::tags::WHITESPACE,
+                range: 1..3,
+                parent: None,
+            },
+            AnnotationSpan {
+                tag: 101,
+                range: 3..4,
+                parent: None,
+            },
         ]
     );
 
-    let fallback = frontier::best(&OverflowThenHeight { width: 1 }, &doc);
-    let mut fallback_runs = Vec::new();
-    tagged_runs(&fallback.out, &mut fallback_runs);
+    let fallback = laidout::render_with(
+        &doc,
+        &OverflowThenHeight { width: 1 },
+        SolveLimits::default(),
+    )
+    .unwrap();
     assert_eq!(
-        fallback_runs,
-        vec![("a".into(), Some(100)), ("b".into(), Some(101))]
+        fallback.spans,
+        vec![
+            AnnotationSpan {
+                tag: 100,
+                range: 0..1,
+                parent: None,
+            },
+            AnnotationSpan {
+                tag: 101,
+                range: 2..3,
+                parent: None,
+            },
+        ]
     );
+}
+
+#[test]
+fn tables_align_from_each_runs_stored_width_without_global_remeasurement() {
+    let cjk = try_text_with("·", WidthMode::Cjk).unwrap();
+    let narrow = try_text_with("·", WidthMode::Narrow).unwrap();
+    let doc = table([Column::new(), Column::new()])
+        .row([cjk, text("x")])
+        .row([narrow, text("y")])
+        .build()
+        .unwrap();
+
+    let best = frontier::best(&OverflowThenHeight { width: 80 }, &doc);
+    assert_eq!(to_string(&best.out), "·  x\n·   y");
 }
 
 #[test]
@@ -218,7 +251,7 @@ proptest! {
         let best_words = laidout::words(&to_string(&best.out));
         let greedy_words = laidout::words(&greedy.lines.join("\n"));
 
-        prop_assert_eq!(best.cost, oracle.cost);
+        prop_assert_eq!(&best.cost, &oracle.cost);
         prop_assert!(best.cost <= greedy.cost);
         prop_assert_eq!(best_words, expected.clone());
         prop_assert_eq!(greedy_words, expected);

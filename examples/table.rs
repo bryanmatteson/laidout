@@ -1,7 +1,6 @@
-//! Render a statically compiled aligned table in compact and fallback forms.
+//! Render a statically compiled aligned table through the consumer facade.
 
-use laidout::cost::OverflowThenHeight;
-use laidout::{frontier, table, text, to_string, Alignment, Column};
+use laidout::{render, table, text, Alignment, Column, RenderOptions};
 
 fn main() {
     let doc = table([
@@ -16,7 +15,7 @@ fn main() {
     .expect("example cells are flat");
 
     for width in [40, 8] {
-        let best = frontier::best(&OverflowThenHeight { width }, &doc);
-        println!("== width {width}\n{}\n", to_string(&best.out));
+        let rendered = render(&doc, &RenderOptions::new(width)).expect("exact render");
+        println!("== width {width}\n{}\n", rendered.text);
     }
 }

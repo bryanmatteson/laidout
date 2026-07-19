@@ -6,6 +6,7 @@ description = "Research pretty-printer: parametric-cost optimal layout with brut
 license = "MIT"
 
 [dependencies]
+num-bigint = "0.4.6"
 unicode-width = "0.2.2"
 
 [dev-dependencies]
