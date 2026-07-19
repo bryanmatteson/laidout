@@ -1,7 +1,11 @@
 use std::num::NonZeroU32;
 
-use laidout::corpus::sql::{complex_query, Formatter};
 use laidout::{render, LayoutStrategy, RenderOptions};
+
+#[path = "../support/sql.rs"]
+#[allow(dead_code)]
+mod corpus;
+use corpus::{complex_query, Formatter};
 
 fn main() {
     let doc = Formatter::default().format_query(&complex_query());

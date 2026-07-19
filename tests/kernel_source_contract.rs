@@ -1,4 +1,5 @@
 use std::collections::BTreeSet;
+use std::path::Path;
 
 fn variants(source: &str, declaration: &str) -> BTreeSet<String> {
     let start = source
@@ -99,6 +100,15 @@ fn package_metadata_is_publishable_and_exact() {
         package["repository"].as_str(),
         Some("https://github.com/bryanmatteson/laidout")
     );
+}
+
+#[test]
+fn production_source_contains_only_the_layout_kernel() {
+    assert!(!Path::new("src/corpus.rs").exists());
+    assert!(!Path::new("src/corpus").exists());
+    for fixture in ["json.rs", "ast.rs", "sql.rs", "fluid.rs"] {
+        assert!(Path::new("support").join(fixture).is_file(), "{fixture}");
+    }
 }
 
 #[test]

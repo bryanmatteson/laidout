@@ -1,7 +1,11 @@
 use std::num::NonZeroU32;
 
-use laidout::corpus::sql::{complex_query, Formatter};
 use laidout::{render, LayoutStrategy, RenderOptions};
+
+#[path = "../support/sql.rs"]
+#[allow(dead_code)]
+mod corpus;
+use corpus::{complex_query, Formatter};
 
 #[test]
 fn complex_query_retains_clause_order_and_indentation() {

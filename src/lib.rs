@@ -1,7 +1,5 @@
 //! Standalone prepared-document layout kernel.
 
-#[allow(deprecated)]
-pub mod corpus;
 pub mod cost;
 pub mod doc;
 mod kernel;

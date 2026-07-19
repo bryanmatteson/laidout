@@ -1,7 +1,9 @@
 //! SQL formatter corpus recovered from `internal/doctype/sql_test.go`.
 
-use crate::doc::{concat, group, hardline, join, nest, tag, text, Doc, TagId};
-use crate::{tags, tokens};
+#![allow(deprecated)]
+
+use laidout::doc::{concat, group, hardline, join, nest, tag, text, Doc, TagId};
+use laidout::{tags, tokens};
 
 pub const TAG_KEYWORD: TagId = tags::CUSTOM_START + 16;
 pub const TAG_EXPRESSION: TagId = tags::CUSTOM_START + 17;
@@ -98,7 +100,7 @@ impl Formatter {
 
     fn format_cte(&self, cte: &CteClause) -> Doc {
         let columns = if cte.columns.is_empty() {
-            crate::empty()
+            laidout::empty()
         } else {
             concat([
                 tokens::space(),
@@ -128,7 +130,7 @@ impl Formatter {
 
     fn format_with(&self, ctes: &[CteClause]) -> Doc {
         if ctes.is_empty() {
-            return crate::empty();
+            return laidout::empty();
         }
         concat([
             keyword("with"),
@@ -213,7 +215,7 @@ impl Formatter {
 
     fn format_where(&self, condition: &str) -> Doc {
         if condition.is_empty() {
-            return crate::empty();
+            return laidout::empty();
         }
         concat([
             hardline(),
@@ -225,7 +227,7 @@ impl Formatter {
 
     fn format_group_by(&self, columns: &[String]) -> Doc {
         if columns.is_empty() {
-            return crate::empty();
+            return laidout::empty();
         }
         if columns.len() == 1 {
             return concat([
@@ -253,7 +255,7 @@ impl Formatter {
 
     fn format_having(&self, condition: &str) -> Doc {
         if condition.is_empty() {
-            crate::empty()
+            laidout::empty()
         } else {
             concat([
                 hardline(),
@@ -266,7 +268,7 @@ impl Formatter {
 
     fn format_order_by(&self, items: &[OrderByItem]) -> Doc {
         if items.is_empty() {
-            return crate::empty();
+            return laidout::empty();
         }
         concat([
             hardline(),
@@ -286,7 +288,7 @@ impl Formatter {
     }
 
     fn format_limit_offset(&self, limit: Option<u64>, offset: Option<u64>) -> Doc {
-        let limit = limit.map_or_else(crate::empty, |value| {
+        let limit = limit.map_or_else(laidout::empty, |value| {
             concat([
                 hardline(),
                 keyword("limit"),
@@ -294,7 +296,7 @@ impl Formatter {
                 tagged(TAG_NUMBER, value.to_string()),
             ])
         });
-        let offset = offset.map_or_else(crate::empty, |value| {
+        let offset = offset.map_or_else(laidout::empty, |value| {
             concat([
                 hardline(),
                 keyword("offset"),

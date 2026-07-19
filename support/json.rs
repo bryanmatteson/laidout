@@ -3,13 +3,11 @@
 //! an optimal printer, inline-versus-multiline is the engine's decision, not
 //! the formatter's.
 
-use crate::doc::{concat, group, join, nest, softline, tag, text, Doc, TagId};
-use crate::doc::{concat2, line};
-use crate::tags;
+#![allow(deprecated)]
 
-pub mod ast;
-pub mod fluid;
-pub mod sql;
+use laidout::doc::{concat, group, join, nest, softline, tag, text, Doc, TagId};
+use laidout::doc::{concat2, line};
+use laidout::tags;
 
 pub const TAG_KEY: TagId = tags::CUSTOM_START;
 pub const TAG_STRING: TagId = tags::CUSTOM_START + 1;

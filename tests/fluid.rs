@@ -1,7 +1,10 @@
 use std::num::NonZeroU32;
 
-use laidout::corpus::fluid::PROSE;
 use laidout::{from_text, render, LayoutStrategy, RenderOptions};
+
+#[path = "../support/fluid.rs"]
+mod corpus;
+use corpus::PROSE;
 
 #[test]
 fn recovered_prose_round_trips_wide_and_reflows_by_columns() {

@@ -5,8 +5,10 @@
 //! their own alternatives. That makes this a stronger optimality workload
 //! than uniformly nested JSON groups.
 
-use crate::doc::{concat, group, hardline, join, line, nest, softline, tag, text, Doc, TagId};
-use crate::{tags, tokens};
+#![allow(deprecated)]
+
+use laidout::doc::{concat, group, hardline, join, line, nest, softline, tag, text, Doc, TagId};
+use laidout::{tags, tokens};
 
 pub const TAG_KEYWORD: TagId = tags::CUSTOM_START + 8;
 pub const TAG_IDENT: TagId = tags::CUSTOM_START + 9;
@@ -180,7 +182,7 @@ impl Formatter {
 
     fn format_imports(&self, imports: &[Import]) -> Doc {
         if imports.is_empty() {
-            return crate::empty();
+            return laidout::empty();
         }
         if imports.len() == 1 {
             return concat([
@@ -240,7 +242,7 @@ impl Formatter {
 
     fn format_results(&self, results: &[Field]) -> Doc {
         if results.is_empty() {
-            crate::empty()
+            laidout::empty()
         } else if results.len() == 1 && results[0].name.is_empty() {
             concat([tokens::space(), type_name(&results[0].ty)])
         } else {
@@ -252,7 +254,7 @@ impl Formatter {
         let receiver = decl
             .receiver
             .as_ref()
-            .map_or_else(crate::empty, |receiver| {
+            .map_or_else(laidout::empty, |receiver| {
                 concat([
                     tokens::lparen(),
                     self.format_field(receiver),

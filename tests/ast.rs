@@ -1,7 +1,11 @@
 use std::num::NonZeroU32;
 
-use laidout::corpus::ast::{asymmetric_file, sample_file, Formatter};
 use laidout::{render, LayoutStrategy, RenderOptions};
+
+#[path = "../support/ast.rs"]
+#[allow(dead_code)]
+mod corpus;
+use corpus::{asymmetric_file, sample_file, Formatter};
 
 fn render_at(doc: &laidout::Doc, width: u32, strategy: LayoutStrategy) -> String {
     render(

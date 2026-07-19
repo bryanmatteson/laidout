@@ -1,7 +1,11 @@
 use std::num::NonZeroU32;
 
-use laidout::corpus::{complex_value, format};
 use laidout::{render, LayoutStrategy, RenderOptions};
+
+#[path = "../support/json.rs"]
+#[allow(dead_code)]
+mod corpus;
+use corpus::{complex_value, format};
 
 fn main() {
     let doc = format(&complex_value());

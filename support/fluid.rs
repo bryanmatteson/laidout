@@ -1,4 +1,4 @@
-//! Indented prose fixture recovered from `internal/doctype/fluid_test.go`.
+//! Repository prose fixture recovered from `internal/doctype/fluid_test.go`.
 
 pub const PROSE: &str = "Commodo eiusmod labore ea tempor\n\
 \tcommodo reprehenderit. Culpa commodo ullamcolaborum ex ad mollit minim pariatur voluptate\n\
