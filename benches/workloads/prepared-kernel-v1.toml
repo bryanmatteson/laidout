@@ -1,0 +1,48 @@
+schema_version = 1
+repository = "laidout"
+
+[[case]]
+name = "json-20"
+kind = "existing-json"
+width = 20
+
+[[case]]
+name = "json-40"
+kind = "existing-json"
+width = 40
+
+[[case]]
+name = "unique-sequence-2000"
+kind = "unique-sequence"
+size = 2000
+width = 4294967295
+
+[[case]]
+name = "unique-sequence-4000"
+kind = "unique-sequence"
+size = 4000
+width = 4294967295
+
+[[case]]
+name = "frontier-64"
+kind = "nondominated-frontier"
+size = 64
+width = 128
+
+[[case]]
+name = "frontier-128"
+kind = "nondominated-frontier"
+size = 128
+width = 256
+
+[[case]]
+name = "zero-width-2000"
+kind = "nested-zero-width"
+size = 2000
+width = 2
+
+[[case]]
+name = "zero-width-4000"
+kind = "nested-zero-width"
+size = 4000
+width = 2

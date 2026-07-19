@@ -1,21 +1,22 @@
-//! Render a statically compiled aligned table through the consumer facade.
+use std::num::NonZeroU32;
 
-use laidout::{render, table, text, Alignment, Column, RenderOptions};
+use laidout::{render, table, Alignment, Column, Doc, RenderOptions};
 
 fn main() {
     let doc = table([
-        Column::labeled(text("NAME")),
-        Column::labeled(text("COUNT")).alignment(Alignment::Right),
-        Column::labeled(text("STATE")).alignment(Alignment::Center),
+        Column::labeled(Doc::text("NAME")),
+        Column::labeled(Doc::text("COUNT")).alignment(Alignment::Right),
+        Column::labeled(Doc::text("STATE")).alignment(Alignment::Center),
     ])
     .header()
-    .row([text("alpha"), text("7"), text("ready")])
-    .row([text("beta"), text("123"), text("idle")])
+    .row([Doc::text("alpha"), Doc::text("7"), Doc::text("ready")])
+    .row([Doc::text("beta"), Doc::text("123"), Doc::text("idle")])
     .build()
-    .expect("example cells are flat");
+    .expect("compile table");
 
-    for width in [40, 8] {
-        let rendered = render(&doc, &RenderOptions::new(width)).expect("exact render");
-        println!("== width {width}\n{}\n", rendered.text);
+    for width in [80, 12] {
+        let rendered = render(&doc, RenderOptions::new(NonZeroU32::new(width).unwrap()))
+            .expect("render table");
+        println!("== width {width}\n{}\n", rendered.text());
     }
 }

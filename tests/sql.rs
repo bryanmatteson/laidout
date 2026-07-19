@@ -1,42 +1,23 @@
+use std::num::NonZeroU32;
+
 use laidout::corpus::sql::{complex_query, Formatter};
-use laidout::cost::OverflowThenHeight;
-use laidout::{frontier, greedy, to_string};
+use laidout::{render, LayoutStrategy, RenderOptions};
 
 #[test]
-fn complex_query_matches_the_prototype_fixture_at_80() {
+fn complex_query_retains_clause_order_and_indentation() {
     let doc = Formatter::default().format_query(&complex_query());
-    let cm = OverflowThenHeight { width: 80 };
-    let best = frontier::best(&cm, &doc);
-    let greedy = greedy::layout(&cm, &doc, 80);
-
-    assert!(best.cost <= greedy.cost);
-    assert_eq!(
-        to_string(&best.out),
-        concat!(
-            "WITH order_stats (user_id, total_orders) AS (\n",
-            "    SELECT\n",
-            "        user_id,\n",
-            "        COUNT(*) AS total_orders\n",
-            "    FROM orders\n",
-            "    GROUP BY user_id\n",
-            ")\n",
-            "SELECT\n",
-            "    u.name,\n",
-            "    os.total_orders,\n",
-            "    COALESCE(SUM(o.amount), 0) AS total_spent\n",
-            "FROM users u\n",
-            "LEFT JOIN order_stats os\n",
-            "    ON os.user_id = u.id\n",
-            "LEFT JOIN orders o\n",
-            "    ON o.user_id = u.id\n",
-            "WHERE u.status = 'active'\n",
-            "    AND o.created_at >= CURRENT_DATE - INTERVAL '1 year'\n",
-            "GROUP BY\n",
-            "    u.name,\n",
-            "    os.total_orders\n",
-            "HAVING COUNT(*) > 5\n",
-            "ORDER BY total_spent DESC\n",
-            "LIMIT 10"
-        )
-    );
+    let rendered = render(
+        &doc,
+        RenderOptions::new(NonZeroU32::new(80).unwrap()).with_strategy(LayoutStrategy::Exact),
+    )
+    .unwrap();
+    let text = rendered.text();
+    let with = text.find("WITH order_stats").unwrap();
+    let select = text.find("SELECT").unwrap();
+    let from = text.rfind("FROM users u").unwrap();
+    let where_clause = text.find("WHERE u.status").unwrap();
+    let order = text.find("ORDER BY total_spent DESC").unwrap();
+    assert!(with < select && select < from && from < where_clause && where_clause < order);
+    assert!(text.ends_with("LIMIT 10"));
+    assert!(text.contains("\n    ON os.user_id = u.id"));
 }

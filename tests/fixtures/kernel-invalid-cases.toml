@@ -1,0 +1,32 @@
+[TextError]
+variants = ["ControlCharacter", "DisplayWidthOverflow"]
+
+[PrepareError]
+variants = ["RepresentationExceeded", "CostDomainExceeded"]
+
+[ReserveError]
+variants = ["CapacityOverflow", "Allocation"]
+
+[RenderError]
+variants = [
+  "WorkspaceCapacityOverflow",
+  "WorkspaceExhausted",
+  "WorkspaceGrowthFailed",
+  "StatisticsOverflow",
+  "CostDomainViolation",
+  "CostWitnessMismatch",
+]
+
+[VisitError]
+variants = ["Workspace", "Visitor"]
+
+[OwnedRenderError]
+variants = ["Prepare", "Reserve", "Render", "OwnedOutputReserve"]
+
+[TableError]
+variants = [
+  "NonFlattenableHeader",
+  "NonFlattenableCell",
+  "ChoiceBearingHeader",
+  "ChoiceBearingCell",
+]

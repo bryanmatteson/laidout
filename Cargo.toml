@@ -1,13 +1,36 @@
 [package]
 name = "laidout"
-version = "0.1.0"
+version = "0.2.0"
+authors = ["Bryan Matteson"]
 edition = "2021"
-description = "Research pretty-printer: parametric-cost optimal layout with brute-force and greedy oracles"
+rust-version = "1.85"
+description = "Standalone prepared-document layout kernel with reusable allocation-controlled workspaces"
 license = "MIT"
+repository = "https://github.com/bryanmatteson/laidout"
+homepage = "https://github.com/bryanmatteson/laidout"
+documentation = "https://docs.rs/laidout"
+readme = "README.md"
+keywords = ["layout", "pretty-printing", "terminal", "unicode"]
+categories = ["command-line-interface", "text-processing"]
+
+[features]
+default = []
+research = ["dep:num-bigint"]
 
 [dependencies]
-num-bigint = "0.4.6"
-unicode-width = "0.2.2"
+num-bigint = { version = "0.4.6", optional = true }
+thiserror = "2"
+unicode-width = "0.2"
 
 [dev-dependencies]
 proptest = "1"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+static_assertions = "1"
+toml = "0.9"
+trybuild = "1"
+
+[[bench]]
+name = "prepared_kernel"
+harness = false
+required-features = ["research"]

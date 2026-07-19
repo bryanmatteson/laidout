@@ -1,253 +1,288 @@
-//! Parametric cost models, in the style of "A Pretty Expressive Printer"
-//! (Porncharoenwase, Nguyen, Torlak; OOPSLA 2023).
-//!
-//! A cost model assigns a cost to placing a text run at a column and to
-//! taking a line break; total cost is the sum over a rendering. The critical
-//! contract is *incrementality*: placing one run of width `a + b` at column
-//! `c` must cost exactly `text(c, a) + text(c + a, b)`, so that engines that
-//! see text in different-sized pieces agree on cost.
+//! Checked compact consumer costs and optional unbounded research costs.
 
-use std::fmt::Debug;
-
-use num_bigint::BigUint;
-use unicode_width::UnicodeWidthStr;
-
-/// Additive cost interface used by all rendering engines.
-///
-/// Arbitrary implementations are accepted by the brute-force and greedy
-/// engines, which do not use algebraic laws to discard layouts. The exact
-/// frontier accepts only [`LawfulCostModel`], whose implementations are sealed
-/// to the models proved in `docs/cost-model-proofs.md`.
-pub trait CostModel {
-    type Cost: Clone + Ord + Debug;
-
-    fn zero(&self) -> Self::Cost;
-    fn add(&self, a: &Self::Cost, b: &Self::Cost) -> Self::Cost;
-    /// Cost of placing `width` display columns of text starting at `col`.
-    fn text(&self, col: u32, width: u32) -> Self::Cost;
-    /// Cost of one line break.
-    fn newline(&self) -> Self::Cost;
-    /// Cost of an explicit branch-local stylistic penalty.
-    fn penalty(&self, amount: u32) -> Self::Cost;
-}
-
-mod sealed {
-    pub trait Sealed {}
-}
-
-/// A cost model whose laws are established for exact Pareto-frontier pruning.
-///
-/// The laws are:
-///
-/// - `zero` is a two-sided identity for associative `add`;
-/// - `add` is monotone in both arguments;
-/// - `text` is incremental under splitting;
-/// - `text(c, width)` is nondecreasing in `c`;
-/// - primitive text, newline, and penalty costs are nonnegative; and
-/// - penalty cost depends only on its amount.
-///
-/// This trait is sealed because Rust trait bounds cannot express or verify
-/// those semantic laws for arbitrary downstream implementations. See the
-/// machine-checked obligations and mathematical derivation in
-/// `docs/cost-model-proofs.md`.
-///
-/// ```compile_fail
-/// use laidout::{CostModel, LawfulCostModel};
-///
-/// #[derive(Debug)]
-/// struct External;
-///
-/// impl CostModel for External {
-///     type Cost = u64;
-///     fn zero(&self) -> u64 { 0 }
-///     fn add(&self, a: &u64, b: &u64) -> u64 { a + b }
-///     fn text(&self, _col: u32, width: u32) -> u64 { u64::from(width) }
-///     fn newline(&self) -> u64 { 1 }
-///     fn penalty(&self, amount: u32) -> u64 { u64::from(amount) }
-/// }
-///
-/// impl LawfulCostModel for External {}
-/// ```
-pub trait LawfulCostModel: CostModel + sealed::Sealed {}
-
-/// Default model: lexicographic (squared overflow area, line breaks).
-///
-/// Overflow past `width` is squared per line, which telescopes under the
-/// incrementality contract: `text(c, w)` contributes
-/// `over(c + w)^2 - over(c)^2`, so a full line ending at column `e` costs
-/// exactly `over(e)^2` regardless of how the line was split into runs.
-/// Height is a strictly weaker criterion, so the printer never trades
-/// overflow for fewer lines.
-#[derive(Clone, Copy, Debug)]
-pub struct OverflowThenHeight {
-    pub width: u32,
-}
-
-impl OverflowThenHeight {
-    fn over(&self, col: u32) -> u64 {
-        u64::from(col.saturating_sub(self.width))
-    }
-}
-
-impl CostModel for OverflowThenHeight {
-    type Cost = (BigUint, u32);
-
-    fn zero(&self) -> Self::Cost {
-        (BigUint::from(0u8), 0)
-    }
-
-    fn add(&self, a: &Self::Cost, b: &Self::Cost) -> Self::Cost {
-        (&a.0 + &b.0, a.1.saturating_add(b.1))
-    }
-
-    fn text(&self, col: u32, width: u32) -> Self::Cost {
-        let start = self.over(col);
-        let end = self.over(col.checked_add(width).expect("cost-model column overflow"));
-        (BigUint::from(end * end - start * start), 0)
-    }
-
-    fn newline(&self) -> Self::Cost {
-        (BigUint::from(0u8), 1)
-    }
-
-    fn penalty(&self, _amount: u32) -> Self::Cost {
-        (BigUint::from(0u8), 0)
-    }
-}
-
-impl sealed::Sealed for OverflowThenHeight {}
-impl LawfulCostModel for OverflowThenHeight {}
-
-/// Cost used by the high-level consumer renderer.
-///
-/// Overflow is lexicographically dominant. `burden` combines line breaks and
-/// explicit branch-local penalties in documented burden units.
-#[derive(Clone, Debug, Eq, Ord, PartialEq, PartialOrd)]
+#[derive(Clone, Copy, Debug, Eq, Ord, PartialEq, PartialOrd)]
 pub struct ConsumerCost {
-    /// Exact, unbounded squared-overflow area.
-    pub overflow: BigUint,
-    pub burden: u64,
+    pub(crate) overflow: u128,
+    pub(crate) burden: u64,
 }
 
-/// Built-in practical cost model used by [`crate::render()`].
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
-pub struct ConsumerCostModel {
+impl ConsumerCost {
+    pub const fn overflow(self) -> u128 {
+        self.overflow
+    }
+
+    pub const fn burden(self) -> u64 {
+        self.burden
+    }
+
+    pub(crate) const fn zero() -> Self {
+        Self {
+            overflow: 0,
+            burden: 0,
+        }
+    }
+
+    pub(crate) fn checked_add(self, other: Self) -> Option<Self> {
+        Some(Self {
+            overflow: self.overflow.checked_add(other.overflow)?,
+            burden: self.burden.checked_add(other.burden)?,
+        })
+    }
+}
+
+#[derive(Clone, Copy, Debug)]
+pub(crate) struct PreparedConsumerCostModel {
     width: u32,
     newline_cost: u32,
 }
 
-impl ConsumerCostModel {
-    pub fn new(width: u32) -> Self {
+impl PreparedConsumerCostModel {
+    pub(crate) const fn new(width: u32, newline_cost: u32) -> Self {
         Self {
             width,
-            newline_cost: 1,
+            newline_cost,
         }
     }
 
-    pub fn with_newline_cost(mut self, newline_cost: u32) -> Self {
-        self.newline_cost = newline_cost;
-        self
+    fn over(self, column: u32) -> u128 {
+        u128::from(column.saturating_sub(self.width))
     }
 
-    pub fn width(&self) -> u32 {
-        self.width
-    }
-
-    pub fn newline_cost(&self) -> u32 {
-        self.newline_cost
-    }
-
-    fn over(&self, col: u32) -> u64 {
-        u64::from(col.saturating_sub(self.width))
-    }
-}
-
-impl CostModel for ConsumerCostModel {
-    type Cost = ConsumerCost;
-
-    fn zero(&self) -> Self::Cost {
-        ConsumerCost {
-            overflow: BigUint::from(0u8),
+    pub(crate) fn text(self, column: u32, width: u32) -> Option<ConsumerCost> {
+        let end_column = column.checked_add(width)?;
+        let start = self.over(column);
+        let end = self.over(end_column);
+        let start_squared = start.checked_mul(start)?;
+        let end_squared = end.checked_mul(end)?;
+        Some(ConsumerCost {
+            overflow: end_squared.checked_sub(start_squared)?,
             burden: 0,
-        }
+        })
     }
 
-    fn add(&self, a: &Self::Cost, b: &Self::Cost) -> Self::Cost {
+    pub(crate) fn newline(self) -> ConsumerCost {
         ConsumerCost {
-            overflow: &a.overflow + &b.overflow,
-            burden: a.burden.saturating_add(b.burden),
-        }
-    }
-
-    fn text(&self, col: u32, width: u32) -> Self::Cost {
-        let start = self.over(col);
-        let end = self.over(col.checked_add(width).expect("cost-model column overflow"));
-        ConsumerCost {
-            overflow: BigUint::from(end * end - start * start),
-            burden: 0,
-        }
-    }
-
-    fn newline(&self) -> Self::Cost {
-        ConsumerCost {
-            overflow: BigUint::from(0u8),
+            overflow: 0,
             burden: u64::from(self.newline_cost),
         }
     }
 
-    fn penalty(&self, amount: u32) -> Self::Cost {
+    pub(crate) fn penalty(self, amount: u32) -> ConsumerCost {
         ConsumerCost {
-            overflow: BigUint::from(0u8),
+            overflow: 0,
             burden: u64::from(amount),
         }
     }
 }
 
-impl sealed::Sealed for ConsumerCostModel {}
-impl LawfulCostModel for ConsumerCostModel {}
-
-/// Terminal display width of a text run according to Unicode width rules.
-pub fn display_width(s: &str) -> u32 {
-    u32::try_from(UnicodeWidthStr::width(s)).expect("text display width exceeds u32::MAX")
+/// Terminal display width using the default narrow Unicode policy.
+pub fn display_width(value: &str) -> u32 {
+    u32::try_from(unicode_width::UnicodeWidthStr::width(value))
+        .expect("text display width exceeds u32::MAX")
 }
 
 #[cfg(test)]
 mod tests {
+    use super::{ConsumerCost, PreparedConsumerCostModel};
+
+    #[test]
+    fn every_compact_cost_operation_is_exact_at_its_accepted_boundary() {
+        let almost_maximum = ConsumerCost {
+            overflow: u128::MAX - 1,
+            burden: u64::MAX - 1,
+        };
+        assert_eq!(
+            almost_maximum
+                .checked_add(ConsumerCost {
+                    overflow: 1,
+                    burden: 1,
+                })
+                .unwrap(),
+            ConsumerCost {
+                overflow: u128::MAX,
+                burden: u64::MAX,
+            }
+        );
+        assert!(ConsumerCost {
+            overflow: u128::MAX,
+            burden: 0,
+        }
+        .checked_add(ConsumerCost {
+            overflow: 1,
+            burden: 0,
+        })
+        .is_none());
+        assert!(ConsumerCost {
+            overflow: 0,
+            burden: u64::MAX,
+        }
+        .checked_add(ConsumerCost {
+            overflow: 0,
+            burden: 1,
+        })
+        .is_none());
+
+        let model = PreparedConsumerCostModel::new(0, u32::MAX);
+        let maximum_line = model.text(0, u32::MAX).unwrap();
+        assert_eq!(
+            maximum_line.overflow,
+            u128::from(u32::MAX) * u128::from(u32::MAX)
+        );
+        assert_eq!(model.newline().burden, u64::from(u32::MAX));
+        assert_eq!(model.penalty(u32::MAX).burden, u64::from(u32::MAX));
+        assert!(model.text(1, u32::MAX).is_none());
+    }
+
+    #[test]
+    fn secondary_saturation_would_destroy_preferred_strict_order() {
+        let preferred = (0u128, 1u64);
+        let later = (0u128, 0u64);
+        assert!(later < preferred);
+        let suffix = u64::MAX;
+        assert_eq!(
+            preferred.1.saturating_add(suffix),
+            later.1.saturating_add(suffix)
+        );
+        assert!(ConsumerCost {
+            overflow: preferred.0,
+            burden: preferred.1,
+        }
+        .checked_add(ConsumerCost {
+            overflow: 0,
+            burden: suffix,
+        })
+        .is_none());
+    }
+}
+
+#[cfg(feature = "research")]
+pub mod research {
+    use std::fmt::Debug;
+
     use num_bigint::BigUint;
 
-    use super::{display_width, ConsumerCost, ConsumerCostModel, CostModel};
+    pub trait CostModel {
+        type Cost: Clone + Ord + Debug;
 
-    #[test]
-    fn display_width_counts_terminal_columns() {
-        assert_eq!(display_width("ascii"), 5);
-        assert_eq!(display_width("界"), 2);
-        assert_eq!(display_width("e\u{301}"), 1);
+        fn zero(&self) -> Self::Cost;
+        fn add(&self, left: &Self::Cost, right: &Self::Cost) -> Self::Cost;
+        fn text(&self, column: u32, width: u32) -> Self::Cost;
+        fn newline(&self) -> Self::Cost;
+        fn penalty(&self, amount: u32) -> Self::Cost;
     }
 
-    #[test]
-    fn dominant_accumulation_preserves_lexicographic_order_past_u64_max() {
-        let model = ConsumerCostModel::new(80);
-        let less = ConsumerCost {
-            overflow: BigUint::from(0u8),
-            burden: u64::MAX,
-        };
-        let greater = ConsumerCost {
-            overflow: BigUint::from(1u8),
-            burden: 0,
-        };
-        let increment = ConsumerCost {
-            overflow: BigUint::from(u64::MAX),
-            burden: 0,
-        };
-
-        assert!(less < greater);
-        assert!(model.add(&less, &increment) < model.add(&greater, &increment));
-
-        let research = super::OverflowThenHeight { width: 80 };
-        let less = (BigUint::from(0u8), u32::MAX);
-        let greater = (BigUint::from(1u8), 0);
-        let increment = (BigUint::from(u64::MAX), 0);
-        assert!(less < greater);
-        assert!(research.add(&less, &increment) < research.add(&greater, &increment));
+    mod sealed {
+        pub trait Sealed {}
     }
+
+    pub trait LawfulCostModel: CostModel + sealed::Sealed {}
+
+    #[derive(Clone, Debug, Eq, Ord, PartialEq, PartialOrd)]
+    pub struct ResearchConsumerCost {
+        pub overflow: BigUint,
+        pub burden: BigUint,
+    }
+
+    #[derive(Clone, Copy, Debug, Eq, PartialEq)]
+    pub struct ResearchConsumerCostModel {
+        width: u32,
+        newline_cost: u32,
+    }
+
+    impl ResearchConsumerCostModel {
+        pub const fn new(width: u32) -> Self {
+            Self {
+                width,
+                newline_cost: 1,
+            }
+        }
+
+        pub const fn with_newline_cost(mut self, newline_cost: u32) -> Self {
+            self.newline_cost = newline_cost;
+            self
+        }
+
+        fn over(self, column: u32) -> u64 {
+            u64::from(column.saturating_sub(self.width))
+        }
+    }
+
+    impl CostModel for ResearchConsumerCostModel {
+        type Cost = ResearchConsumerCost;
+
+        fn zero(&self) -> Self::Cost {
+            ResearchConsumerCost {
+                overflow: BigUint::from(0u8),
+                burden: BigUint::from(0u8),
+            }
+        }
+
+        fn add(&self, left: &Self::Cost, right: &Self::Cost) -> Self::Cost {
+            ResearchConsumerCost {
+                overflow: &left.overflow + &right.overflow,
+                burden: &left.burden + &right.burden,
+            }
+        }
+
+        fn text(&self, column: u32, width: u32) -> Self::Cost {
+            let start = self.over(column);
+            let end = self.over(column.checked_add(width).expect("research column overflow"));
+            ResearchConsumerCost {
+                overflow: BigUint::from(end * end - start * start),
+                burden: BigUint::from(0u8),
+            }
+        }
+
+        fn newline(&self) -> Self::Cost {
+            ResearchConsumerCost {
+                overflow: BigUint::from(0u8),
+                burden: BigUint::from(self.newline_cost),
+            }
+        }
+
+        fn penalty(&self, amount: u32) -> Self::Cost {
+            ResearchConsumerCost {
+                overflow: BigUint::from(0u8),
+                burden: BigUint::from(amount),
+            }
+        }
+    }
+
+    impl sealed::Sealed for ResearchConsumerCostModel {}
+    impl LawfulCostModel for ResearchConsumerCostModel {}
+
+    #[derive(Clone, Copy, Debug)]
+    pub struct OverflowThenHeight {
+        pub width: u32,
+    }
+
+    impl CostModel for OverflowThenHeight {
+        type Cost = (BigUint, BigUint);
+
+        fn zero(&self) -> Self::Cost {
+            (BigUint::from(0u8), BigUint::from(0u8))
+        }
+
+        fn add(&self, left: &Self::Cost, right: &Self::Cost) -> Self::Cost {
+            (&left.0 + &right.0, &left.1 + &right.1)
+        }
+
+        fn text(&self, column: u32, width: u32) -> Self::Cost {
+            let over = |value: u32| u64::from(value.saturating_sub(self.width));
+            let start = over(column);
+            let end = over(column.checked_add(width).expect("research column overflow"));
+            (BigUint::from(end * end - start * start), BigUint::from(0u8))
+        }
+
+        fn newline(&self) -> Self::Cost {
+            (BigUint::from(0u8), BigUint::from(1u8))
+        }
+
+        fn penalty(&self, _amount: u32) -> Self::Cost {
+            (BigUint::from(0u8), BigUint::from(0u8))
+        }
+    }
+
+    impl sealed::Sealed for OverflowThenHeight {}
+    impl LawfulCostModel for OverflowThenHeight {}
 }

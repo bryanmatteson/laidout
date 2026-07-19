@@ -5,8 +5,6 @@
 //! their own alternatives. That makes this a stronger optimality workload
 //! than uniformly nested JSON groups.
 
-use std::rc::Rc;
-
 use crate::doc::{concat, group, hardline, join, line, nest, softline, tag, text, Doc, TagId};
 use crate::{tags, tokens};
 
@@ -89,27 +87,27 @@ impl Default for Formatter {
     }
 }
 
-fn tagged(tag_id: TagId, value: impl AsRef<str>) -> Rc<Doc> {
+fn tagged(tag_id: TagId, value: impl AsRef<str>) -> Doc {
     tag(tag_id, text(value))
 }
 
-fn keyword(value: &str) -> Rc<Doc> {
+fn keyword(value: &str) -> Doc {
     tagged(TAG_KEYWORD, value)
 }
 
-fn ident(value: &str) -> Rc<Doc> {
+fn ident(value: &str) -> Doc {
     tagged(TAG_IDENT, value)
 }
 
-fn type_name(value: &str) -> Rc<Doc> {
+fn type_name(value: &str) -> Doc {
     tagged(TAG_TYPE, value)
 }
 
-fn string_literal(value: &str) -> Rc<Doc> {
+fn string_literal(value: &str) -> Doc {
     tagged(TAG_STRING, format!("\"{}\"", value.escape_default()))
 }
 
-fn double_hardline() -> Rc<Doc> {
+fn double_hardline() -> Doc {
     concat([hardline(), hardline()])
 }
 
@@ -118,7 +116,7 @@ fn import_parent(path: &str) -> Option<&str> {
 }
 
 impl Formatter {
-    pub fn format_file(&self, file: &File) -> Rc<Doc> {
+    pub fn format_file(&self, file: &File) -> Doc {
         let package = concat([keyword("package"), tokens::space(), ident(&file.package)]);
         let imports = self.format_imports(&file.imports);
         let declarations = join(
@@ -136,7 +134,7 @@ impl Formatter {
         join(double_hardline(), sections)
     }
 
-    fn format_import(&self, import: &Import) -> Rc<Doc> {
+    fn format_import(&self, import: &Import) -> Doc {
         let mut docs = Vec::new();
         if let Some(name) = &import.name {
             docs.push(ident(name));
@@ -180,7 +178,7 @@ impl Formatter {
         sections
     }
 
-    fn format_imports(&self, imports: &[Import]) -> Rc<Doc> {
+    fn format_imports(&self, imports: &[Import]) -> Doc {
         if imports.is_empty() {
             return crate::empty();
         }
@@ -213,7 +211,7 @@ impl Formatter {
         ])
     }
 
-    fn format_field(&self, field: &Field) -> Rc<Doc> {
+    fn format_field(&self, field: &Field) -> Doc {
         if field.name.is_empty() {
             type_name(&field.ty)
         } else {
@@ -221,7 +219,7 @@ impl Formatter {
         }
     }
 
-    fn field_list(&self, fields: &[Field]) -> Rc<Doc> {
+    fn field_list(&self, fields: &[Field]) -> Doc {
         let separator = concat([tokens::comma(), line()]);
         group(concat([
             tokens::lparen(),
@@ -240,7 +238,7 @@ impl Formatter {
         ]))
     }
 
-    fn format_results(&self, results: &[Field]) -> Rc<Doc> {
+    fn format_results(&self, results: &[Field]) -> Doc {
         if results.is_empty() {
             crate::empty()
         } else if results.len() == 1 && results[0].name.is_empty() {
@@ -250,7 +248,7 @@ impl Formatter {
         }
     }
 
-    pub fn format_func(&self, decl: &FuncDecl) -> Rc<Doc> {
+    pub fn format_func(&self, decl: &FuncDecl) -> Doc {
         let receiver = decl
             .receiver
             .as_ref()

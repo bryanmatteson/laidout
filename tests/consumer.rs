@@ -1,296 +1,167 @@
-use laidout::render::cost_of_out;
+use std::convert::Infallible;
+use std::num::NonZeroU32;
+
 use laidout::{
-    brute, choice, concat, concat2, empty, greedy, hardline, nest, penalize, render, render_with,
-    tag, text, AnnotationSpan, ConsumerCostModel, CostModel, OverflowThenHeight, RenderError,
-    RenderOptions, SolveLimitKind, SolveLimits,
+    render, solve_into, ActiveAnnotations, Doc, LayoutStrategy, LayoutVisitor, RenderOptions,
+    RenderWorkspace,
 };
-use num_bigint::BigUint;
+
+fn options(width: u32, strategy: LayoutStrategy) -> RenderOptions {
+    RenderOptions::new(NonZeroU32::new(width).unwrap()).with_strategy(strategy)
+}
 
 #[test]
-fn nested_repeated_identical_and_empty_annotations_are_lossless() {
-    let doc = tag(
-        10,
-        concat([
-            text("A"),
-            tag(10, tag(11, text("界"))),
-            nest(2, concat([hardline(), tag(12, text("z"))])),
-            tag(13, empty()),
+fn nested_and_empty_annotations_are_structural_spans() {
+    let doc = Doc::annotate(
+        10u32,
+        Doc::concat([
+            Doc::text("A"),
+            Doc::annotate(11, Doc::text("界")),
+            Doc::annotate(12, Doc::empty()),
+            Doc::hard_line(),
+            Doc::nest(2, Doc::text("z")),
         ]),
     );
-    let rendered = render(&doc, &RenderOptions::new(80)).unwrap();
-
-    assert_eq!(rendered.text, "A界\n  z");
-    assert_eq!(
-        rendered.spans,
-        vec![
-            AnnotationSpan {
-                tag: 10,
-                range: 0..8,
-                parent: None,
-            },
-            AnnotationSpan {
-                tag: 10,
-                range: 1..4,
-                parent: Some(0),
-            },
-            AnnotationSpan {
-                tag: 11,
-                range: 1..4,
-                parent: Some(1),
-            },
-            AnnotationSpan {
-                tag: 12,
-                range: 7..8,
-                parent: Some(0),
-            },
-            AnnotationSpan {
-                tag: 13,
-                range: 8..8,
-                parent: Some(0),
-            },
-        ]
-    );
-
-    let runs = rendered.annotated_runs();
-    assert_eq!(
-        runs.iter()
-            .map(|run| (run.text, run.range.clone(), run.tags.clone()))
-            .collect::<Vec<_>>(),
-        vec![
-            ("A", 0..1, vec![10]),
-            ("界", 1..4, vec![10, 10, 11]),
-            ("\n  ", 4..7, vec![10]),
-            ("z", 7..8, vec![10, 12]),
-        ]
-    );
-    assert_eq!(
-        runs.iter().map(|run| run.text).collect::<String>(),
-        rendered.text
-    );
-    assert!(runs.iter().all(|run| !run.text.is_empty()));
-
-    let baseline = OverflowThenHeight { width: 80 };
-    let oracle = brute::best(&baseline, &doc, 0);
-    let greedy = greedy::layout(&baseline, &doc, 80);
-    assert_eq!(oracle.spans, rendered.spans);
-    assert_eq!(greedy.spans, rendered.spans);
+    let rendered = render(&doc, options(80, LayoutStrategy::Exact)).unwrap();
+    assert_eq!(rendered.text(), "A界\nz");
+    let spans = rendered
+        .resolved_spans()
+        .map(|(span, tag)| {
+            (
+                *tag,
+                span.range.clone(),
+                span.parent.map(|parent| parent.index()),
+            )
+        })
+        .collect::<Vec<_>>();
+    assert_eq!(spans[0], (10, 0..6, None));
+    assert_eq!(spans[1], (11, 1..4, Some(0)));
+    assert_eq!(spans[2], (12, 4..4, Some(0)));
 }
 
 #[test]
-fn penalties_select_branches_without_changing_width_or_losing_events() {
-    let lower_penalty = choice(tag(1, penalize(3, text("same"))), tag(2, text("same")));
-    let rendered = render(&lower_penalty, &RenderOptions::new(80)).unwrap();
-    assert_eq!(rendered.text, "same");
-    assert_eq!(rendered.spans[0].tag, 2);
-    assert_eq!(rendered.cost.burden, 0);
-
-    let trade_line_for_penalty = choice(
-        penalize(2, text("ab")),
-        concat([text("a"), hardline(), text("b")]),
+fn penalties_select_branches_without_changing_bytes() {
+    let doc = Doc::choice(
+        Doc::annotate(1u32, Doc::penalize(3, Doc::text("same"))),
+        Doc::annotate(2, Doc::text("same")),
     );
-    let rendered = render(&trade_line_for_penalty, &RenderOptions::new(80)).unwrap();
-    assert_eq!(rendered.text, "a\nb");
-    assert_eq!(rendered.cost.burden, 1);
+    let rendered = render(&doc, options(80, LayoutStrategy::Exact)).unwrap();
+    assert_eq!(rendered.text(), "same");
+    assert_eq!(rendered.resolved_spans().next().unwrap().1, &2);
+    assert_eq!(rendered.cost().burden(), 0);
+}
 
-    let overflow_dominates_burden = choice(
-        text("ab"),
-        penalize(100, concat([text("a"), hardline(), text("b")])),
+#[test]
+fn overflow_remains_the_dominant_cost_component() {
+    let doc = Doc::<u32>::choice(
+        Doc::text("ab"),
+        Doc::penalize(
+            100,
+            Doc::concat([Doc::text("a"), Doc::hard_line(), Doc::text("b")]),
+        ),
     );
-    let rendered = render(&overflow_dominates_burden, &RenderOptions::new(1)).unwrap();
-    assert_eq!(rendered.text, "a\nb");
-    assert_eq!(rendered.cost.overflow, BigUint::from(0u8));
-    assert_eq!(rendered.cost.burden, 101);
+    let rendered = render(&doc, options(1, LayoutStrategy::Exact)).unwrap();
+    assert_eq!(rendered.text(), "a\nb");
+    assert_eq!(rendered.cost().overflow(), 0);
+    assert_eq!(rendered.cost().burden(), 101);
+}
 
-    let baseline = render_with(
-        &choice(tag(1, penalize(99, text("same"))), tag(2, text("same"))),
-        &OverflowThenHeight { width: 80 },
-        SolveLimits::default(),
+#[test]
+fn equal_cost_ties_preserve_the_preferred_branch() {
+    let doc = Doc::choice(
+        Doc::annotate(1u32, Doc::text("same")),
+        Doc::annotate(2, Doc::text("same")),
+    );
+    let rendered = render(&doc, options(80, LayoutStrategy::Exact)).unwrap();
+    assert_eq!(rendered.resolved_spans().next().unwrap().1, &1);
+}
+
+#[derive(Debug, Eq, PartialEq)]
+enum Event {
+    Enter(u32),
+    Text(String, Vec<u32>),
+    Penalty(u32),
+    Exit(u32),
+}
+
+#[derive(Default)]
+struct EventVisitor(Vec<Event>);
+
+impl LayoutVisitor<u32> for EventVisitor {
+    type Error = Infallible;
+
+    fn enter_annotation(
+        &mut self,
+        _id: laidout::AnnotationId,
+        value: &u32,
+    ) -> Result<(), Self::Error> {
+        self.0.push(Event::Enter(*value));
+        Ok(())
+    }
+
+    fn exit_annotation(
+        &mut self,
+        _id: laidout::AnnotationId,
+        value: &u32,
+    ) -> Result<(), Self::Error> {
+        self.0.push(Event::Exit(*value));
+        Ok(())
+    }
+
+    fn penalty(&mut self, amount: u32) -> Result<(), Self::Error> {
+        self.0.push(Event::Penalty(amount));
+        Ok(())
+    }
+
+    fn text(
+        &mut self,
+        text: &str,
+        annotations: ActiveAnnotations<'_, u32>,
+    ) -> Result<(), Self::Error> {
+        self.0.push(Event::Text(
+            text.to_owned(),
+            annotations.iter().map(|(_, value)| *value).collect(),
+        ));
+        Ok(())
+    }
+
+    fn newline(
+        &mut self,
+        _indent: u32,
+        _annotations: ActiveAnnotations<'_, u32>,
+    ) -> Result<(), Self::Error> {
+        Ok(())
+    }
+}
+
+#[test]
+fn visitor_replays_the_complete_structural_witness() {
+    let doc = Doc::annotate(7u32, Doc::penalize(3, Doc::text("x")));
+    let prepared = doc.prepare().unwrap();
+    let mut workspace = RenderWorkspace::growable();
+    let layout = solve_into(
+        &prepared,
+        options(80, LayoutStrategy::Exact),
+        &mut workspace,
     )
     .unwrap();
-    assert_eq!(baseline.spans[0].tag, 1);
-
-    let model = ConsumerCostModel::new(80);
-    let greedy = greedy::layout(&model, &penalize(7, text("x")), 80);
-    assert_eq!(greedy.cost.burden, 7);
-    assert_eq!(greedy.cost, cost_of_out(&model, &greedy.out));
-    assert_eq!(penalize(0, text("x")), text("x"));
-}
-
-#[test]
-fn equal_cost_layouts_keep_the_earlier_branch_even_when_it_ends_farther_right() {
-    let doc = choice(tag(1, text("preferred")), tag(2, text("x")));
-    let cm = OverflowThenHeight { width: 80 };
-    let oracle = brute::best(&cm, &doc, 1);
-    let exact = render_with(&doc, &cm, SolveLimits::default()).unwrap();
-
-    assert_eq!(oracle.text(), "preferred");
-    assert_eq!(exact.text, oracle.text());
-    assert_eq!(exact.spans, oracle.spans);
-    assert_eq!(exact.spans[0].tag, 1);
-}
-
-fn assert_cost_laws<M: CostModel>(model: &M) {
-    let zero = model.zero();
-    let a = model.text(2, 3);
-    let b = model.newline();
-    let c = model.penalty(4);
-    assert_eq!(model.add(&zero, &a), a);
-    assert_eq!(model.add(&a, &zero), a);
+    let mut visitor = EventVisitor::default();
+    layout.visit(&mut visitor).unwrap();
     assert_eq!(
-        model.add(&model.add(&a, &b), &c),
-        model.add(&a, &model.add(&b, &c))
-    );
-    assert_eq!(
-        model.text(5, 7),
-        model.add(&model.text(5, 3), &model.text(8, 4))
-    );
-    assert!(model.text(3, 4) <= model.text(7, 4));
-    assert!(model.penalty(0) <= model.penalty(4));
-}
-
-#[test]
-fn built_in_cost_models_obey_the_frontier_laws() {
-    assert_cost_laws(&OverflowThenHeight { width: 8 });
-    assert_cost_laws(&ConsumerCostModel::new(8).with_newline_cost(3));
-}
-
-#[derive(Clone, Copy, Debug)]
-struct NonIncremental;
-
-impl CostModel for NonIncremental {
-    type Cost = u64;
-
-    fn zero(&self) -> Self::Cost {
-        0
-    }
-
-    fn add(&self, a: &Self::Cost, b: &Self::Cost) -> Self::Cost {
-        a + b
-    }
-
-    fn text(&self, col: u32, width: u32) -> Self::Cost {
-        u64::from(col) * u64::from(width)
-    }
-
-    fn newline(&self) -> Self::Cost {
-        0
-    }
-
-    fn penalty(&self, amount: u32) -> Self::Cost {
-        u64::from(amount)
-    }
-}
-
-#[test]
-fn a_test_model_that_breaks_incrementality_fails_the_law_fixture() {
-    let model = NonIncremental;
-    assert_ne!(
-        model.text(5, 7),
-        model.add(&model.text(5, 3), &model.text(8, 4))
+        visitor.0,
+        [
+            Event::Enter(7),
+            Event::Penalty(3),
+            Event::Text("x".into(), vec![7]),
+            Event::Exit(7),
+        ]
     );
 }
 
 #[test]
-fn arbitrary_models_remain_available_to_non_pruning_engines() {
-    let model = NonIncremental;
-    let doc = choice(text("left"), text("right"));
-
-    let oracle = brute::best(&model, &doc, 1);
-    let greedy = laidout::greedy::layout(&model, &doc, 80);
-
-    assert_eq!(oracle.text(), "left");
-    assert_eq!(greedy.lines.join("\n"), "left");
-}
-
-fn limit_error(
-    doc: &std::rc::Rc<laidout::Doc>,
-    limits: SolveLimits,
-) -> (SolveLimitKind, u64, laidout::SolveStats) {
-    match render(doc, &RenderOptions::new(12).with_limits(limits)).unwrap_err() {
-        RenderError::LimitExceeded {
-            kind,
-            configured,
-            stats,
-        } => (kind, configured, stats),
-        error => panic!("unexpected render error: {error}"),
-    }
-}
-
-#[test]
-fn exact_limits_fail_deterministically_after_the_configured_event() {
-    let doc = concat([
-        choice(
-            text("alpha beta"),
-            concat([text("alpha"), hardline(), text("beta")]),
-        ),
-        text(" "),
-        choice(text("gamma"), concat([text("g"), hardline(), text("amma")])),
-    ]);
-    let baseline = render(&doc, &RenderOptions::new(12)).unwrap();
-    assert!(baseline.stats.solve_calls > 1);
-    assert!(baseline.stats.candidates_generated > 1);
-    assert!(baseline.stats.memo_entries > 1);
-
-    let exact_limits = SolveLimits {
-        max_solve_calls: Some(baseline.stats.solve_calls),
-        max_candidates: Some(baseline.stats.candidates_generated),
-        max_memo_entries: Some(baseline.stats.memo_entries),
-    };
-    let exact = render(&doc, &RenderOptions::new(12).with_limits(exact_limits)).unwrap();
-    assert_eq!(exact.stats, baseline.stats);
-
-    let call_limit = baseline.stats.solve_calls - 1;
-    let call_error = limit_error(
-        &doc,
-        SolveLimits {
-            max_solve_calls: Some(call_limit),
-            ..SolveLimits::default()
-        },
-    );
-    assert_eq!(call_error.0, SolveLimitKind::SolveCalls);
-    assert_eq!(call_error.1, call_limit);
-    assert_eq!(call_error.2.solve_calls, call_limit + 1);
-
-    let candidate_limit = baseline.stats.candidates_generated - 1;
-    let candidate_error = limit_error(
-        &doc,
-        SolveLimits {
-            max_candidates: Some(candidate_limit),
-            ..SolveLimits::default()
-        },
-    );
-    assert_eq!(candidate_error.0, SolveLimitKind::Candidates);
-    assert_eq!(candidate_error.1, candidate_limit);
-    assert_eq!(candidate_error.2.candidates_generated, candidate_limit + 1);
-
-    let memo_limit = baseline.stats.memo_entries - 1;
-    let memo_error = limit_error(
-        &doc,
-        SolveLimits {
-            max_memo_entries: Some(memo_limit),
-            ..SolveLimits::default()
-        },
-    );
-    assert_eq!(memo_error.0, SolveLimitKind::MemoEntries);
-    assert_eq!(memo_error.1, memo_limit as u64);
-    assert_eq!(memo_error.2.memo_entries, memo_limit);
-
-    assert_eq!(
-        limit_error(
-            &doc,
-            SolveLimits {
-                max_candidates: Some(candidate_limit),
-                ..SolveLimits::default()
-            }
-        ),
-        candidate_error
-    );
-}
-
-#[test]
-fn exact_render_handles_deep_concat_without_recursive_layout_or_output_walks() {
-    let doc = (0..3_000).fold(empty(), |doc, _| concat2(doc, text("x")));
-    let rendered = render(&doc, &RenderOptions::new(3_000)).unwrap();
-    assert_eq!(rendered.text.len(), 3_000);
-    assert!(rendered.text.bytes().all(|byte| byte == b'x'));
+fn concat_and_zero_penalty_are_canonical_identities() {
+    let value = Doc::<u32>::text("x");
+    assert_eq!(Doc::<u32>::concat([]), Doc::empty());
+    assert_eq!(Doc::concat([value.clone()]), value);
+    assert_eq!(Doc::penalize(0, value.clone()), value);
 }

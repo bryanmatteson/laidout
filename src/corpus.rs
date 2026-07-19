@@ -3,8 +3,6 @@
 //! an optimal printer, inline-versus-multiline is the engine's decision, not
 //! the formatter's.
 
-use std::rc::Rc;
-
 use crate::doc::{concat, group, join, nest, softline, tag, text, Doc, TagId};
 use crate::doc::{concat2, line};
 use crate::tags;
@@ -31,15 +29,15 @@ pub enum Value {
 
 const INDENT: u16 = 2;
 
-fn string_doc(s: &str, t: TagId) -> Rc<Doc> {
+fn string_doc(s: &str, t: TagId) -> Doc {
     tag(t, text(format!("\"{}\"", s.escape_default())))
 }
 
-fn comma_line() -> Rc<Doc> {
+fn comma_line() -> Doc {
     concat2(tag(TAG_PUNCT, text(",")), line())
 }
 
-fn bracketed(open: &str, close: &str, items: Vec<Rc<Doc>>) -> Rc<Doc> {
+fn bracketed(open: &str, close: &str, items: Vec<Doc>) -> Doc {
     if items.is_empty() {
         return tag(TAG_PUNCT, text(format!("{open}{close}")));
     }
@@ -51,7 +49,7 @@ fn bracketed(open: &str, close: &str, items: Vec<Rc<Doc>>) -> Rc<Doc> {
     ]))
 }
 
-pub fn format(v: &Value) -> Rc<Doc> {
+pub fn format(v: &Value) -> Doc {
     match v {
         Value::Null => text("null"),
         Value::Bool(b) => tag(TAG_BOOL, text(if *b { "true" } else { "false" })),

@@ -11,7 +11,7 @@ if printf '%s\n' "$output" | grep -Eq '^(sat|unknown)$'; then
 fi
 
 checks=$(printf '%s\n' "$output" | grep -c '^unsat$')
-if [ "$checks" -ne 8 ]; then
-    printf '%s\n' "cost-model proof failed: expected 8 obligations, saw $checks" >&2
+if [ "$checks" -ne 13 ]; then
+    printf '%s\n' "cost-model proof failed: expected 13 obligations, saw $checks" >&2
     exit 1
 fi

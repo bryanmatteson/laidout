@@ -1,0 +1,9 @@
+error[E0499]: cannot borrow `workspace` as mutable more than once at a time
+  --> tests/ui/layout_ref_reentry.rs:10:49
+   |
+ 9 |     let first = solve_into(&prepared, options, &mut workspace).unwrap();
+   |                                                -------------- first mutable borrow occurs here
+10 |     let second = solve_into(&prepared, options, &mut workspace).unwrap();
+   |                                                 ^^^^^^^^^^^^^^ second mutable borrow occurs here
+11 |     let _ = (first.cost(), second.cost());
+   |              ----- first borrow later used here

@@ -1,33 +1,31 @@
 //! Small, classified token constructors for formatter ergonomics.
 
-use std::rc::Rc;
-
 use crate::doc::{tag, text, Doc};
 use crate::tags;
 
-pub fn whitespace(s: impl AsRef<str>) -> Rc<Doc> {
+pub fn whitespace(s: impl AsRef<str>) -> Doc {
     tag(tags::WHITESPACE, text(s))
 }
 
-pub fn indent(s: impl AsRef<str>) -> Rc<Doc> {
+pub fn indent(s: impl AsRef<str>) -> Doc {
     tag(tags::INDENT, text(s))
 }
 
-pub fn word(s: impl AsRef<str>) -> Rc<Doc> {
+pub fn word(s: impl AsRef<str>) -> Doc {
     tag(tags::WORD, text(s))
 }
 
-pub fn symbol(s: impl AsRef<str>) -> Rc<Doc> {
+pub fn symbol(s: impl AsRef<str>) -> Doc {
     tag(tags::SYMBOL, text(s))
 }
 
-pub fn space() -> Rc<Doc> {
+pub fn space() -> Doc {
     whitespace(" ")
 }
 
 macro_rules! symbol_token {
     ($name:ident, $text:literal) => {
-        pub fn $name() -> Rc<Doc> {
+        pub fn $name() -> Doc {
             symbol($text)
         }
     };

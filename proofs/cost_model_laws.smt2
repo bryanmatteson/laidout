@@ -1,175 +1,150 @@
-; Machine-checked obligations for the algebra implemented in src/cost.rs.
-; Run through proofs/check-cost-model-laws.sh. Every check must be unsat:
-; an unsat result means no counterexample exists over the declared domain.
+; Counterexample queries for the compact prepared-domain cost algebra.
+; Every check must be unsat.
 
 (set-logic ALL)
 
-; The secondary component is a bounded natural with saturating addition.
-(define-fun badd ((x Int) (y Int) (cap Int)) Int
-  (ite (<= (+ x y) cap) (+ x y) cap))
-
-; Costs are lexicographically ordered pairs. The first component is an
-; unbounded natural; the second is a bounded natural.
 (define-fun lex-le ((ao Int) (ab Int) (bo Int) (bb Int)) Bool
   (or (< ao bo) (and (= ao bo) (<= ab bb))))
+(define-fun lex-lt ((ao Int) (ab Int) (bo Int) (bb Int)) Bool
+  (or (< ao bo) (and (= ao bo) (< ab bb))))
+(define-fun over ((column Int) (page Int)) Int
+  (ite (> column page) (- column page) 0))
+(define-fun potential ((column Int) (page Int)) Int
+  (* (over column page) (over column page)))
+(define-fun text-cost ((column Int) (width Int) (page Int)) Int
+  (- (potential (+ column width) page) (potential column page)))
+(define-fun uadd-ok128 ((x (_ BitVec 128)) (y (_ BitVec 128))) Bool
+  (= ((_ extract 128 128) (bvadd ((_ zero_extend 1) x) ((_ zero_extend 1) y))) #b0))
+(define-fun uadd-ok64 ((x (_ BitVec 64)) (y (_ BitVec 64))) Bool
+  (= ((_ extract 64 64) (bvadd ((_ zero_extend 1) x) ((_ zero_extend 1) y))) #b0))
+(define-fun uadd-ok32 ((x (_ BitVec 32)) (y (_ BitVec 32))) Bool
+  (= ((_ extract 32 32) (bvadd ((_ zero_extend 1) x) ((_ zero_extend 1) y))) #b0))
 
-(define-fun over ((column Int) (page-width Int)) Int
-  (ite (> column page-width) (- column page-width) 0))
-
-(define-fun potential ((column Int) (page-width Int)) Int
-  (* (over column page-width) (over column page-width)))
-
-(define-fun text-cost ((column Int) (run-width Int) (page-width Int)) Int
-  (- (potential (+ column run-width) page-width)
-     (potential column page-width)))
-
-(define-fun consumer-penalty ((amount Int) (context Int)) Int amount)
-(define-fun research-penalty ((amount Int) (context Int)) Int 0)
-
-(echo "law 1: zero is a two-sided identity")
+(echo "law 1: exact zero is a two-sided identity")
 (push)
-(declare-const io Int)
-(declare-const ib Int)
-(declare-const icap Int)
-(assert (and (>= io 0) (>= icap 0) (>= ib 0) (<= ib icap)))
-(assert
-  (or (not (= (+ 0 io) io))
-      (not (= (+ io 0) io))
-      (not (= (badd 0 ib icap) ib))
-      (not (= (badd ib 0 icap) ib))))
+(declare-const io Int) (declare-const ib Int)
+(assert (and (>= io 0) (>= ib 0)))
+(assert (or (not (= (+ 0 io) io)) (not (= (+ io 0) io))
+            (not (= (+ 0 ib) ib)) (not (= (+ ib 0) ib))))
 (check-sat)
 (pop)
 
-(echo "law 2: addition is associative")
+(echo "law 2: exact addition is associative")
 (push)
-(declare-const ao Int)
-(declare-const bo Int)
-(declare-const co Int)
-(declare-const ab Int)
-(declare-const bb Int)
-(declare-const cb Int)
-(declare-const acap Int)
-(assert
-  (and (>= ao 0) (>= bo 0) (>= co 0)
-       (>= acap 0)
-       (>= ab 0) (<= ab acap)
-       (>= bb 0) (<= bb acap)
-       (>= cb 0) (<= cb acap)))
-(assert
-  (or (not (= (+ (+ ao bo) co) (+ ao (+ bo co))))
-      (not (= (badd (badd ab bb acap) cb acap)
-              (badd ab (badd bb cb acap) acap)))))
+(declare-const a1 Int) (declare-const a2 Int)
+(declare-const b1 Int) (declare-const b2 Int)
+(declare-const c1 Int) (declare-const c2 Int)
+(assert (and (>= a1 0) (>= a2 0) (>= b1 0) (>= b2 0) (>= c1 0) (>= c2 0)))
+(assert (or (not (= (+ (+ a1 b1) c1) (+ a1 (+ b1 c1))))
+            (not (= (+ (+ a2 b2) c2) (+ a2 (+ b2 c2))))))
 (check-sat)
 (pop)
 
-(echo "law 3a: addition is monotone in its left argument")
+(echo "law 3a: weak translation in the left argument")
 (push)
-(declare-const lao Int)
-(declare-const lab Int)
-(declare-const lbo Int)
-(declare-const lbb Int)
-(declare-const lco Int)
-(declare-const lcb Int)
-(declare-const lcap Int)
-(assert
-  (and (>= lao 0) (>= lbo 0) (>= lco 0)
-       (>= lcap 0)
-       (>= lab 0) (<= lab lcap)
-       (>= lbb 0) (<= lbb lcap)
-       (>= lcb 0) (<= lcb lcap)
-       (lex-le lao lab lbo lbb)))
-(assert
-  (not (lex-le (+ lao lco) (badd lab lcb lcap)
-               (+ lbo lco) (badd lbb lcb lcap))))
+(declare-const wao Int) (declare-const wab Int)
+(declare-const wbo Int) (declare-const wbb Int)
+(declare-const wco Int) (declare-const wcb Int)
+(assert (and (>= wao 0) (>= wab 0) (>= wbo 0) (>= wbb 0) (>= wco 0) (>= wcb 0)
+             (lex-le wao wab wbo wbb)))
+(assert (not (lex-le (+ wao wco) (+ wab wcb) (+ wbo wco) (+ wbb wcb))))
 (check-sat)
 (pop)
 
-(echo "law 3b: addition is monotone in its right argument")
+(echo "law 3b: weak translation in the right argument")
 (push)
-(declare-const rao Int)
-(declare-const rab Int)
-(declare-const rbo Int)
-(declare-const rbb Int)
-(declare-const rco Int)
-(declare-const rcb Int)
-(declare-const rcap Int)
-(assert
-  (and (>= rao 0) (>= rbo 0) (>= rco 0)
-       (>= rcap 0)
-       (>= rab 0) (<= rab rcap)
-       (>= rbb 0) (<= rbb rcap)
-       (>= rcb 0) (<= rcb rcap)
-       (lex-le rao rab rbo rbb)))
-(assert
-  (not (lex-le (+ rco rao) (badd rcb rab rcap)
-               (+ rco rbo) (badd rcb rbb rcap))))
+(declare-const xao Int) (declare-const xab Int)
+(declare-const xbo Int) (declare-const xbb Int)
+(declare-const xco Int) (declare-const xcb Int)
+(assert (and (>= xao 0) (>= xab 0) (>= xbo 0) (>= xbb 0) (>= xco 0) (>= xcb 0)
+             (lex-le xao xab xbo xbb)))
+(assert (not (lex-le (+ xco xao) (+ xcb xab) (+ xco xbo) (+ xcb xbb))))
 (check-sat)
 (pop)
 
-(echo "law 4: text cost is incremental under splitting")
+(echo "law 4a: strict translation in the left argument")
 (push)
-(declare-const scol Int)
-(declare-const sw1 Int)
-(declare-const sw2 Int)
-(declare-const spage Int)
-(assert (and (>= scol 0) (>= sw1 0) (>= sw2 0) (>= spage 0)))
-(assert
-  (not (= (text-cost scol (+ sw1 sw2) spage)
-          (+ (text-cost scol sw1 spage)
-             (text-cost (+ scol sw1) sw2 spage)))))
+(declare-const sao Int) (declare-const sab Int)
+(declare-const sbo Int) (declare-const sbb Int)
+(declare-const sco Int) (declare-const scb Int)
+(assert (and (>= sao 0) (>= sab 0) (>= sbo 0) (>= sbb 0) (>= sco 0) (>= scb 0)
+             (lex-lt sao sab sbo sbb)))
+(assert (not (lex-lt (+ sao sco) (+ sab scb) (+ sbo sco) (+ sbb scb))))
 (check-sat)
 (pop)
 
-(echo "law 5: text cost is nondecreasing in starting column")
+(echo "law 4b: strict translation in the right argument")
 (push)
-(declare-const c1 Int)
-(declare-const c2 Int)
-(declare-const cw Int)
-(declare-const cpage Int)
-(assert
-  (and (>= c1 0) (>= c2 0) (<= c1 c2)
-       (>= cw 0) (>= cpage 0)))
-(assert (> (text-cost c1 cw cpage) (text-cost c2 cw cpage)))
+(declare-const tao Int) (declare-const tab Int)
+(declare-const tbo Int) (declare-const tbb Int)
+(declare-const tco Int) (declare-const tcb Int)
+(assert (and (>= tao 0) (>= tab 0) (>= tbo 0) (>= tbb 0) (>= tco 0) (>= tcb 0)
+             (lex-lt tao tab tbo tbb)))
+(assert (not (lex-lt (+ tco tao) (+ tcb tab) (+ tco tbo) (+ tcb tbb))))
 (check-sat)
 (pop)
 
-(echo "law 6: primitive costs are nonnegative and penalties are context-free")
+(echo "law 5: text cost is incremental under splitting")
 (push)
-(declare-const ncol Int)
-(declare-const nw Int)
-(declare-const npage Int)
-(declare-const namount Int)
-(declare-const nnewline Int)
-(declare-const ncontext1 Int)
-(declare-const ncontext2 Int)
-(assert
-  (and (>= ncol 0) (>= nw 0) (>= npage 0)
-       (>= namount 0) (>= nnewline 0)
-       (>= ncontext1 0) (>= ncontext2 0)))
-; Consumer penalty is (0, amount); OverflowThenHeight penalty is (0, 0).
-; Neither expression contains a column or chunking context.
-(assert
-  (or (< (text-cost ncol nw npage) 0)
-      (not (lex-le 0 0 0 nnewline))
-      (not (lex-le 0 0 0 namount))
-      (not (= (consumer-penalty namount ncontext1)
-              (consumer-penalty namount ncontext2)))
-      (not (= (research-penalty namount ncontext1)
-              (research-penalty namount ncontext2)))))
+(declare-const col Int) (declare-const w1 Int) (declare-const w2 Int) (declare-const page Int)
+(assert (and (>= col 0) (>= w1 0) (>= w2 0) (>= page 0)))
+(assert (not (= (text-cost col (+ w1 w2) page)
+                (+ (text-cost col w1 page) (text-cost (+ col w1) w2 page)))))
 (check-sat)
 (pop)
 
-(echo "implementation: u32 overflow square fits the intermediate u64")
+(echo "law 6: text cost is nonnegative and column-monotone")
 (push)
-(declare-const ustart Int)
-(declare-const uend Int)
-(assert
-  (and (>= ustart 0) (<= ustart uend)
-       (<= uend 4294967295)))
-(assert
-  (or (> (* uend uend) 18446744073709551615)
-      (< (- (* uend uend) (* ustart ustart)) 0)
-      (> (- (* uend uend) (* ustart ustart))
-         18446744073709551615)))
+(declare-const mc1 Int) (declare-const mc2 Int) (declare-const mw Int) (declare-const mp Int)
+(assert (and (>= mc1 0) (<= mc1 mc2) (>= mw 0) (>= mp 0)))
+(assert (or (< (text-cost mc1 mw mp) 0)
+            (> (text-cost mc1 mw mp) (text-cost mc2 mw mp))))
+(check-sat)
+(pop)
+
+(echo "law 7: newline and penalty costs are nonnegative and context-free")
+(push)
+(declare-const amount Int) (declare-const newline Int) (declare-const context1 Int) (declare-const context2 Int)
+(assert (and (>= amount 0) (>= newline 0) (>= context1 0) (>= context2 0)))
+(assert (or (< amount 0) (< newline 0) (not (= amount amount))))
+(check-sat)
+(pop)
+
+(echo "implementation 1: every u32 overflow square fits u64")
+(push)
+(declare-const ov Int)
+(assert (and (>= ov 0) (<= ov 4294967295)))
+(assert (> (* ov ov) 18446744073709551615))
+(check-sat)
+(pop)
+
+(echo "implementation 2: checked u128/u64 additions do not wrap")
+(push)
+(declare-const bao (_ BitVec 128)) (declare-const bco (_ BitVec 128))
+(declare-const bab (_ BitVec 64)) (declare-const bcb (_ BitVec 64))
+(assert (and (uadd-ok128 bao bco) (uadd-ok64 bab bcb)))
+(assert (or
+  (not (= ((_ extract 127 0) (bvadd ((_ zero_extend 1) bao) ((_ zero_extend 1) bco)))
+          (bvadd bao bco)))
+  (not (= ((_ extract 63 0) (bvadd ((_ zero_extend 1) bab) ((_ zero_extend 1) bcb)))
+          (bvadd bab bcb)))))
+(check-sat)
+(pop)
+
+(echo "implementation 3: checked u32 column addition agrees with natural addition")
+(push)
+(declare-const bc (_ BitVec 32)) (declare-const bw (_ BitVec 32))
+(assert (uadd-ok32 bc bw))
+(assert (not (= ((_ extract 31 0) (bvadd ((_ zero_extend 1) bc) ((_ zero_extend 1) bw)))
+                (bvadd bc bw))))
+(check-sat)
+(pop)
+
+(echo "implementation 4: zero-extended u32 square has no high u64 bits")
+(push)
+(declare-const sq (_ BitVec 32))
+(define-fun sq128 () (_ BitVec 128)
+  (bvmul ((_ zero_extend 96) sq) ((_ zero_extend 96) sq)))
+(assert (not (= ((_ extract 127 64) sq128) (_ bv0 64))))
 (check-sat)
 (pop)

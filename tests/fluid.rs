@@ -1,24 +1,29 @@
+use std::num::NonZeroU32;
+
 use laidout::corpus::fluid::PROSE;
-use laidout::cost::OverflowThenHeight;
-use laidout::{from_text, frontier, greedy, to_string, words};
-use num_bigint::BigUint;
+use laidout::{from_text, render, LayoutStrategy, RenderOptions};
 
 #[test]
-fn recovered_prose_round_trips_wide_and_reflows_without_overflow() {
+fn recovered_prose_round_trips_wide_and_reflows_by_columns() {
     let doc = from_text(PROSE).unwrap();
-    let wide = frontier::best(&OverflowThenHeight { width: 10_000 }, &doc);
-    let normalized = PROSE.replace('\t', "        ");
-    assert_eq!(to_string(&wide.out), normalized);
+    let wide = render(
+        &doc,
+        RenderOptions::new(NonZeroU32::new(10_000).unwrap()).with_strategy(LayoutStrategy::Exact),
+    )
+    .unwrap();
+    assert_eq!(wide.text(), PROSE.replace('\t', "        "));
 
-    let cm = OverflowThenHeight { width: 40 };
-    let greedy = greedy::layout(&cm, &doc, 40);
-    let best = frontier::best(&cm, &doc);
-    let rendered = to_string(&best.out);
-
-    assert_eq!(best.cost.0, BigUint::from(0u8));
-    assert!(best.cost <= greedy.cost);
-    assert_eq!(words(&rendered), words(PROSE));
-    assert!(rendered
+    let narrow = render(
+        &doc,
+        RenderOptions::new(NonZeroU32::new(40).unwrap()).with_strategy(LayoutStrategy::Exact),
+    )
+    .unwrap();
+    assert_eq!(
+        narrow.text().split_whitespace().collect::<Vec<_>>(),
+        PROSE.split_whitespace().collect::<Vec<_>>()
+    );
+    assert!(narrow
+        .text()
         .lines()
         .all(|line| laidout::cost::display_width(line) <= 40));
 }

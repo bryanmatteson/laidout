@@ -1,7 +1,5 @@
 //! SQL formatter corpus recovered from `internal/doctype/sql_test.go`.
 
-use std::rc::Rc;
-
 use crate::doc::{concat, group, hardline, join, nest, tag, text, Doc, TagId};
 use crate::{tags, tokens};
 
@@ -67,24 +65,24 @@ impl Default for Formatter {
     }
 }
 
-fn tagged(tag_id: TagId, value: impl AsRef<str>) -> Rc<Doc> {
+fn tagged(tag_id: TagId, value: impl AsRef<str>) -> Doc {
     tag(tag_id, text(value))
 }
 
-fn keyword(value: &str) -> Rc<Doc> {
+fn keyword(value: &str) -> Doc {
     tagged(TAG_KEYWORD, value.to_uppercase())
 }
 
-fn expression(value: &str) -> Rc<Doc> {
+fn expression(value: &str) -> Doc {
     tagged(TAG_EXPRESSION, value)
 }
 
-fn ident(value: &str) -> Rc<Doc> {
+fn ident(value: &str) -> Doc {
     tagged(TAG_IDENT, value)
 }
 
 impl Formatter {
-    pub fn format_query(&self, query: &Query) -> Rc<Doc> {
+    pub fn format_query(&self, query: &Query) -> Doc {
         concat([
             self.format_with(&query.with),
             self.format_select(&query.select),
@@ -98,7 +96,7 @@ impl Formatter {
         ])
     }
 
-    fn format_cte(&self, cte: &CteClause) -> Rc<Doc> {
+    fn format_cte(&self, cte: &CteClause) -> Doc {
         let columns = if cte.columns.is_empty() {
             crate::empty()
         } else {
@@ -128,7 +126,7 @@ impl Formatter {
         ])
     }
 
-    fn format_with(&self, ctes: &[CteClause]) -> Rc<Doc> {
+    fn format_with(&self, ctes: &[CteClause]) -> Doc {
         if ctes.is_empty() {
             return crate::empty();
         }
@@ -143,7 +141,7 @@ impl Formatter {
         ])
     }
 
-    fn format_select(&self, items: &[SelectItem]) -> Rc<Doc> {
+    fn format_select(&self, items: &[SelectItem]) -> Doc {
         let selections = items.iter().map(|item| {
             if let Some(alias) = &item.alias {
                 group(concat([
@@ -169,7 +167,7 @@ impl Formatter {
         ])
     }
 
-    fn format_table_ref(&self, table: &TableRef) -> Rc<Doc> {
+    fn format_table_ref(&self, table: &TableRef) -> Doc {
         if let Some(alias) = &table.alias {
             group(concat([ident(&table.name), tokens::space(), ident(alias)]))
         } else {
@@ -177,7 +175,7 @@ impl Formatter {
         }
     }
 
-    fn format_from(&self, table: &TableRef) -> Rc<Doc> {
+    fn format_from(&self, table: &TableRef) -> Doc {
         concat([
             hardline(),
             keyword("from"),
@@ -186,7 +184,7 @@ impl Formatter {
         ])
     }
 
-    fn format_joins(&self, joins: &[JoinClause]) -> Rc<Doc> {
+    fn format_joins(&self, joins: &[JoinClause]) -> Doc {
         concat(joins.iter().map(|join_clause| {
             concat([
                 hardline(),
@@ -206,14 +204,14 @@ impl Formatter {
         }))
     }
 
-    fn format_condition(&self, condition: &str) -> Rc<Doc> {
+    fn format_condition(&self, condition: &str) -> Doc {
         join(
             concat([hardline(), keyword("and"), tokens::space()]),
             condition.split(" AND ").map(str::trim).map(expression),
         )
     }
 
-    fn format_where(&self, condition: &str) -> Rc<Doc> {
+    fn format_where(&self, condition: &str) -> Doc {
         if condition.is_empty() {
             return crate::empty();
         }
@@ -225,7 +223,7 @@ impl Formatter {
         ])
     }
 
-    fn format_group_by(&self, columns: &[String]) -> Rc<Doc> {
+    fn format_group_by(&self, columns: &[String]) -> Doc {
         if columns.is_empty() {
             return crate::empty();
         }
@@ -253,7 +251,7 @@ impl Formatter {
         ])
     }
 
-    fn format_having(&self, condition: &str) -> Rc<Doc> {
+    fn format_having(&self, condition: &str) -> Doc {
         if condition.is_empty() {
             crate::empty()
         } else {
@@ -266,7 +264,7 @@ impl Formatter {
         }
     }
 
-    fn format_order_by(&self, items: &[OrderByItem]) -> Rc<Doc> {
+    fn format_order_by(&self, items: &[OrderByItem]) -> Doc {
         if items.is_empty() {
             return crate::empty();
         }
@@ -287,7 +285,7 @@ impl Formatter {
         ])
     }
 
-    fn format_limit_offset(&self, limit: Option<u64>, offset: Option<u64>) -> Rc<Doc> {
+    fn format_limit_offset(&self, limit: Option<u64>, offset: Option<u64>) -> Doc {
         let limit = limit.map_or_else(crate::empty, |value| {
             concat([
                 hardline(),

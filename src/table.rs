@@ -2,15 +2,15 @@
 //!
 //! The builder measures each cell's flat projection once, constructs a
 //! padded compact table and a vertically stacked fallback, then returns an
-//! ordinary [`Doc::Choice`] wrapped in [`align`]. No callbacks or ambient
+//! ordinary [`Doc::choice`] wrapped in [`align`]. No callbacks or ambient
 //! layout state enter the document tree.
 
+use crate::doc::{
+    align, choice, concat, empty, flatten, hardline, join, Doc, FlatAlternative, Node,
+};
+use crate::tokens;
 use std::error::Error;
 use std::fmt;
-use std::rc::Rc;
-
-use crate::doc::{align, choice, concat, empty, flatten, hardline, join, Doc};
-use crate::tokens;
 
 #[derive(Clone, Copy, Debug, Default, Eq, Hash, PartialEq)]
 pub enum Alignment {
@@ -22,7 +22,7 @@ pub enum Alignment {
 
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct Column {
-    pub header: Option<Rc<Doc>>,
+    pub header: Option<Doc>,
     pub alignment: Alignment,
     pub min_padding: u16,
 }
@@ -42,7 +42,7 @@ impl Column {
         Self::default()
     }
 
-    pub fn labeled(header: Rc<Doc>) -> Self {
+    pub fn labeled(header: Doc) -> Self {
         Self {
             header: Some(header),
             ..Self::default()
@@ -60,7 +60,6 @@ impl Column {
     }
 }
 
-#[non_exhaustive]
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub enum TableError {
     NonFlattenableHeader { column: usize },
@@ -98,13 +97,13 @@ impl Error for TableError {}
 #[derive(Clone, Debug, Default, Eq, PartialEq)]
 pub struct Table {
     columns: Vec<Column>,
-    rows: Vec<Vec<Rc<Doc>>>,
+    rows: Vec<Vec<Doc>>,
     show_header: bool,
 }
 
 #[derive(Clone)]
 struct FlatCell {
-    doc: Rc<Doc>,
+    doc: Doc,
     width: u32,
 }
 
@@ -121,17 +120,17 @@ impl Table {
         self
     }
 
-    pub fn row(mut self, cells: impl IntoIterator<Item = Rc<Doc>>) -> Self {
+    pub fn row(mut self, cells: impl IntoIterator<Item = Doc>) -> Self {
         self.push_row(cells);
         self
     }
 
-    pub fn push_row(&mut self, cells: impl IntoIterator<Item = Rc<Doc>>) {
+    pub fn push_row(&mut self, cells: impl IntoIterator<Item = Doc>) {
         self.rows.push(cells.into_iter().collect());
     }
 
     /// Compile the table into ordinary document nodes.
-    pub fn build(&self) -> Result<Rc<Doc>, TableError> {
+    pub fn build(&self) -> Result<Doc, TableError> {
         let column_count = self
             .rows
             .iter()
@@ -235,37 +234,53 @@ fn empty_cell() -> FlatCell {
     }
 }
 
-fn flatten_cell(doc: &Rc<Doc>) -> Option<FlatCell> {
+fn flatten_cell(doc: &Doc) -> Option<FlatCell> {
     let doc = flatten(doc)?;
     let width = flat_width(&doc)?;
     Some(FlatCell { doc, width })
 }
 
 fn contains_choice(doc: &Doc) -> bool {
-    match doc {
-        Doc::Empty | Doc::Text(_) | Doc::Line { .. } => false,
-        Doc::Concat(left, right) => contains_choice(left) || contains_choice(right),
-        Doc::Nest(_, inner)
-        | Doc::Align(inner)
-        | Doc::Tag(_, inner)
-        | Doc::Penalty { doc: inner, .. } => contains_choice(inner),
-        Doc::Choice(_, _) => true,
+    let mut work = vec![doc];
+    while let Some(doc) = work.pop() {
+        match doc.root().as_ref() {
+            Node::Group(_) | Node::Choice { .. } => return true,
+            Node::Fill(children) if children.len() > 1 => return true,
+            Node::Seq(children) | Node::Fill(children) => work.extend(children.iter()),
+            Node::Nest { child, .. }
+            | Node::Align(child)
+            | Node::Annotate { child, .. }
+            | Node::Penalty { child, .. } => work.push(child),
+            Node::Empty | Node::Text(_) | Node::Break(_) | Node::HardLine => {}
+        }
     }
+    false
 }
 
 fn flat_width(doc: &Doc) -> Option<u32> {
-    match doc {
-        Doc::Empty => Some(0),
-        Doc::Text(value) => Some(value.columns()),
-        Doc::Line { flat: Some(value) } => Some(value.columns()),
-        Doc::Line { flat: None } => None,
-        Doc::Concat(left, right) => flat_width(left)?.checked_add(flat_width(right)?),
-        Doc::Nest(_, inner)
-        | Doc::Align(inner)
-        | Doc::Tag(_, inner)
-        | Doc::Penalty { doc: inner, .. } => flat_width(inner),
-        Doc::Choice(preferred, _) => flat_width(preferred),
+    let mut width = 0u32;
+    let mut work = vec![doc];
+    while let Some(doc) = work.pop() {
+        match doc.root().as_ref() {
+            Node::Empty => {}
+            Node::Text(value) => width = width.checked_add(value.columns())?,
+            Node::Break(FlatAlternative::Space) => width = width.checked_add(1)?,
+            Node::Break(FlatAlternative::Empty) => {}
+            Node::HardLine => return None,
+            Node::Seq(children) | Node::Fill(children) => {
+                for child in children.iter().rev() {
+                    work.push(child);
+                }
+            }
+            Node::Group(child)
+            | Node::Nest { child, .. }
+            | Node::Align(child)
+            | Node::Annotate { child, .. }
+            | Node::Penalty { child, .. } => work.push(child),
+            Node::Choice { preferred, .. } => work.push(preferred),
+        }
     }
+    Some(width)
 }
 
 fn update_widths(widths: &mut [u32], row: &[FlatCell]) {
@@ -274,7 +289,7 @@ fn update_widths(widths: &mut [u32], row: &[FlatCell]) {
     }
 }
 
-fn compact_row(row: &[FlatCell], columns: &[Column], widths: &[u32]) -> Rc<Doc> {
+fn compact_row(row: &[FlatCell], columns: &[Column], widths: &[u32]) -> Doc {
     concat(row.iter().enumerate().map(|(column, cell)| {
         let slack = widths[column] - cell.width;
         let (before, after) = match columns[column].alignment {
@@ -294,7 +309,7 @@ fn compact_row(row: &[FlatCell], columns: &[Column], widths: &[u32]) -> Rc<Doc> 
     }))
 }
 
-fn spaces(width: u32) -> Rc<Doc> {
+fn spaces(width: u32) -> Doc {
     if width == 0 {
         empty()
     } else {

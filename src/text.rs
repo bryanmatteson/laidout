@@ -5,15 +5,13 @@
 //! leading indentation is preserved as a classified text run. [`align`]
 //! makes reflowed lines return to the source line's content column.
 
-use std::mem;
-use std::num::NonZeroU8;
-use std::rc::Rc;
-
 use crate::doc::{
     align, choice, concat, hardline, line, measured_columns, tag, try_text_with, Doc, TagId,
     TextError, WidthMode,
 };
 use crate::tags;
+use std::mem;
+use std::num::NonZeroU8;
 
 /// Policy for normalizing raw text into measured document runs.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -54,12 +52,12 @@ fn is_word_char(ch: char, previous: Option<char>) -> bool {
         || ((ch == '\'' || ch == '\u{2019}') && previous.is_some_and(char::is_alphabetic))
 }
 
-fn classified(kind: Kind, value: &str, width_mode: WidthMode) -> Result<Rc<Doc>, TextError> {
+fn classified(kind: Kind, value: &str, width_mode: WidthMode) -> Result<Doc, TextError> {
     Ok(tag(kind.tag(), try_text_with(value, width_mode)?))
 }
 
 fn flush(
-    docs: &mut Vec<Rc<Doc>>,
+    docs: &mut Vec<Doc>,
     buffer: &mut String,
     kind: Option<Kind>,
     width_mode: WidthMode,
@@ -78,7 +76,7 @@ fn flush(
     Ok(())
 }
 
-fn content_doc(content: &str, width_mode: WidthMode) -> Result<Rc<Doc>, TextError> {
+fn content_doc(content: &str, width_mode: WidthMode) -> Result<Doc, TextError> {
     let mut docs = Vec::new();
     let mut buffer = String::new();
     let mut kind = None;
@@ -110,7 +108,7 @@ fn content_doc(content: &str, width_mode: WidthMode) -> Result<Rc<Doc>, TextErro
     Ok(concat(docs))
 }
 
-fn line_doc(source_line: &str, width_mode: WidthMode) -> Result<Rc<Doc>, TextError> {
+fn line_doc(source_line: &str, width_mode: WidthMode) -> Result<Doc, TextError> {
     let indent_end = source_line
         .char_indices()
         .find_map(|(index, ch)| (ch != ' ').then_some(index))
@@ -180,12 +178,12 @@ fn normalize(input: &str, options: IngestOptions) -> Result<String, TextError> {
 /// Wide layouts reproduce normalized input: carriage returns become line
 /// feeds and tabs expand to configured source-line tab stops. Narrow layouts
 /// may replace horizontal whitespace inside a physical line with a break.
-pub fn from_text(input: &str) -> Result<Rc<Doc>, TextError> {
+pub fn from_text(input: &str) -> Result<Doc, TextError> {
     from_text_with(input, IngestOptions::default())
 }
 
 /// Convert arbitrary text under an explicit width and tab-stop policy.
-pub fn from_text_with(input: &str, options: IngestOptions) -> Result<Rc<Doc>, TextError> {
+pub fn from_text_with(input: &str, options: IngestOptions) -> Result<Doc, TextError> {
     if input.is_empty() {
         return Ok(crate::doc::empty());
     }

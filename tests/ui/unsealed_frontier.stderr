@@ -1,0 +1,26 @@
+error[E0277]: the trait bound `External: LawfulCostModel` is not satisfied
+  --> tests/ui/unsealed_frontier.rs:19:28
+   |
+19 |     let _ = frontier::best(&External, &doc);
+   |             -------------- ^^^^^^^^^ unsatisfied trait bound
+   |             |
+   |             required by a bound introduced by this call
+   |
+help: the trait `LawfulCostModel` is not implemented for `External`
+  --> tests/ui/unsealed_frontier.rs:5:1
+   |
+ 5 | struct External;
+   | ^^^^^^^^^^^^^^^
+help: the following other types implement trait `LawfulCostModel`
+  --> src/cost.rs
+   |
+   |     impl LawfulCostModel for ResearchConsumerCostModel {}
+   |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ `ResearchConsumerCostModel`
+...
+   |     impl LawfulCostModel for OverflowThenHeight {}
+   |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ `OverflowThenHeight`
+note: required by a bound in `laidout::research::frontier::best`
+  --> src/research.rs
+   |
+   |     pub fn best<M: LawfulCostModel>(model: &M, doc: &Doc<TagId>) -> Cand<M::Cost> {
+   |                    ^^^^^^^^^^^^^^^ required by this bound in `best`

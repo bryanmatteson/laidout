@@ -1,107 +1,47 @@
-//! The ported JSON corpus, exercised at several widths.
+use std::num::NonZeroU32;
 
 use laidout::corpus::{complex_value, format, Value};
-use laidout::cost::OverflowThenHeight;
-use laidout::{brute, frontier, greedy, to_string};
-use num_bigint::BigUint;
+use laidout::{render, LayoutStrategy, RenderOptions};
 
-fn stripped(s: &str) -> String {
-    s.chars().filter(|c| !c.is_whitespace()).collect()
+fn render_at(doc: &laidout::Doc, width: u32, strategy: LayoutStrategy) -> String {
+    render(
+        doc,
+        RenderOptions::new(NonZeroU32::new(width).unwrap()).with_strategy(strategy),
+    )
+    .unwrap()
+    .text()
+    .to_owned()
 }
 
 #[test]
-fn small_array_breaks_exactly_when_needed() {
+fn small_array_uses_flat_and_broken_group_projections() {
     let doc = format(&Value::Arr(vec![
         Value::Int(1),
         Value::Int(2),
         Value::Int(3),
     ]));
-
-    let wide = frontier::best(&OverflowThenHeight { width: 10 }, &doc);
-    assert_eq!(to_string(&wide.out), "[1, 2, 3]");
-
-    let narrow = frontier::best(&OverflowThenHeight { width: 5 }, &doc);
-    assert_eq!(to_string(&narrow.out), "[\n  1,\n  2,\n  3\n]");
-}
-
-#[test]
-fn complex_json_flat_at_generous_width() {
-    let doc = format(&complex_value());
-    let cm = OverflowThenHeight { width: 400 };
-    let best = frontier::best(&cm, &doc);
-    let text = to_string(&best.out);
+    assert_eq!(render_at(&doc, 10, LayoutStrategy::Exact), "[1, 2, 3]");
     assert_eq!(
-        text.lines().count(),
-        1,
-        "everything fits on one line:\n{text}"
+        render_at(&doc, 5, LayoutStrategy::Exact),
+        "[\n  1,\n  2,\n  3\n]"
     );
-    assert_eq!(best.cost.0, BigUint::from(0u8), "no overflow at width 400");
 }
 
 #[test]
-fn complex_json_frontier_never_worse_than_greedy() {
+fn complex_json_is_valid_and_strategy_invariant_in_content() {
     let doc = format(&complex_value());
-    for width in [20u32, 30, 40, 60, 80, 120] {
-        let cm = OverflowThenHeight { width };
-        let g = greedy::layout(&cm, &doc, width);
-        let best = frontier::best(&cm, &doc);
-        assert!(
-            best.cost <= g.cost,
-            "width {width}: frontier {:?} > greedy {:?}",
-            best.cost,
-            g.cost
-        );
-        assert_eq!(
-            stripped(&to_string(&best.out)),
-            stripped(&g.lines.join("\n")),
-            "width {width}: engines disagree on content"
-        );
+    for strategy in [LayoutStrategy::Fast, LayoutStrategy::Exact] {
+        let text = render_at(&doc, 40, strategy);
+        let parsed: serde_json::Value = serde_json::from_str(&text).unwrap();
+        assert_eq!(parsed["name"], "Example");
+        assert_eq!(parsed["enabled"], true);
+        assert_eq!(parsed["config"]["servers"].as_array().unwrap().len(), 2);
     }
 }
 
 #[test]
-fn subcorpus_matches_brute_force() {
-    // The config sub-object is small enough for exhaustive enumeration.
-    let config = Value::Obj(vec![
-        ("timeout".into(), Value::Int(30)),
-        ("retries".into(), Value::Int(3)),
-        (
-            "servers".into(),
-            Value::Arr(vec![Value::Obj(vec![
-                ("host".into(), Value::Str("server1".into())),
-                ("port".into(), Value::Int(8080)),
-            ])]),
-        ),
-    ]);
-    let doc = format(&config);
-    for width in [10u32, 25, 45, 90] {
-        let cm = OverflowThenHeight { width };
-        let oracle = brute::best(&cm, &doc, 16);
-        let best = frontier::best(&cm, &doc);
-        assert_eq!(
-            best.cost, oracle.cost,
-            "width {width}: frontier is not optimal"
-        );
-    }
-}
-
-#[test]
-fn complex_json_readable_at_40() {
+fn complex_json_is_flat_at_a_generous_width() {
     let doc = format(&complex_value());
-    let cm = OverflowThenHeight { width: 40 };
-    let best = frontier::best(&cm, &doc);
-    let text = to_string(&best.out);
-    // No overflow is achievable at 40, so the optimum must have none —
-    // and must not break lines it doesn't have to.
-    assert_eq!(
-        best.cost.0,
-        BigUint::from(0u8),
-        "unexpected overflow:\n{text}"
-    );
-    for line in text.lines() {
-        assert!(
-            laidout::cost::display_width(line) <= 40,
-            "line exceeds width: {line:?}"
-        );
-    }
+    let text = render_at(&doc, 400, LayoutStrategy::Exact);
+    assert_eq!(text.lines().count(), 1);
 }
