@@ -1,7 +1,7 @@
 [package]
 name = "laidout"
 version = "0.2.0"
-authors = ["Bryan Matteson"]
+authors = ["Bryan Matteson <7145232+bryanmatteson@users.noreply.github.com>"]
 edition = "2021"
 rust-version = "1.85"
 description = "Standalone prepared-document layout kernel with reusable allocation-controlled workspaces"
@@ -12,6 +12,7 @@ documentation = "https://docs.rs/laidout"
 readme = "README.md"
 keywords = ["layout", "pretty-printing", "terminal", "unicode"]
 categories = ["command-line-interface", "text-processing"]
+exclude = [".github/**", ".gitignore", "rust-toolchain.toml", "scripts/**"]
 
 [features]
 default = []
