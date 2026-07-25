@@ -2,6 +2,20 @@
 
 All notable changes to Laidout are documented here.
 
+## 0.3.1 - 2026-07-25
+
+### Changed
+
+- Updated the optional `num-bigint` research dependency to 0.5.
+- Updated the checkout and artifact-upload GitHub Actions to v7.
+- Manifest contract tests now verify feature relationships without coupling
+  them to dependency versions.
+
+### Fixed
+
+- Allocation tests now scope measurement to the active test thread, preventing
+  unrelated test-harness allocations from affecting results.
+
 ## 0.3.0 - 2026-07-25
 
 ### Added
