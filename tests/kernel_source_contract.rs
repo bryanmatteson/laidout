@@ -69,11 +69,20 @@ fn public_error_vocabulary_matches_the_closed_invalid_case_fixture() {
 
 #[test]
 fn default_source_has_no_big_integer_or_downstream_console_dependency_edge() {
-    let manifest = include_str!("../Cargo.toml");
-    assert!(manifest.contains("num-bigint = { version = \"0.4.6\", optional = true }"));
-    assert!(manifest.contains("research = [\"dep:num-bigint\"]"));
+    let manifest_text = include_str!("../Cargo.toml");
+    let manifest: toml::Value = toml::from_str(manifest_text).expect("valid package manifest");
+    let num_bigint = manifest["dependencies"]["num-bigint"]
+        .as_table()
+        .expect("num-bigint dependency table");
+    assert_eq!(num_bigint["optional"].as_bool(), Some(true));
+    assert!(num_bigint["version"].as_str().is_some());
+    let research = manifest["features"]["research"]
+        .as_array()
+        .expect("research feature list");
+    assert_eq!(research.len(), 1);
+    assert_eq!(research[0].as_str(), Some("dep:num-bigint"));
     let forbidden = ["ter", "mosaic"].concat();
-    assert!(!manifest.to_ascii_lowercase().contains(&forbidden));
+    assert!(!manifest_text.to_ascii_lowercase().contains(&forbidden));
 
     for source in [
         include_str!("../src/doc.rs"),
