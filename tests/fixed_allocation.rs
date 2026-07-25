@@ -1,7 +1,8 @@
 use std::alloc::{GlobalAlloc, Layout, System};
+use std::cell::Cell;
 use std::hint::black_box;
 use std::num::NonZeroU32;
-use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
+use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::Mutex;
 
 use laidout::{
@@ -10,12 +11,18 @@ use laidout::{
 };
 
 struct CountingAllocator;
-static ACTIVE: AtomicBool = AtomicBool::new(false);
+thread_local! {
+    static ACTIVE: Cell<bool> = const { Cell::new(false) };
+}
 static ALLOCATIONS: AtomicU64 = AtomicU64::new(0);
 static REALLOCATIONS: AtomicU64 = AtomicU64::new(0);
 static DEALLOCATIONS: AtomicU64 = AtomicU64::new(0);
 static FAIL_ALLOCATION: AtomicU64 = AtomicU64::new(0);
 static MEASUREMENT_LOCK: Mutex<()> = Mutex::new(());
+
+fn active() -> bool {
+    ACTIVE.try_with(Cell::get).unwrap_or(false)
+}
 
 fn should_fail(call: u64) -> bool {
     let fail = FAIL_ALLOCATION.load(Ordering::Relaxed);
@@ -24,7 +31,7 @@ fn should_fail(call: u64) -> bool {
 
 unsafe impl GlobalAlloc for CountingAllocator {
     unsafe fn alloc(&self, layout: Layout) -> *mut u8 {
-        if ACTIVE.load(Ordering::Relaxed) {
+        if active() {
             let call = ALLOCATIONS.fetch_add(1, Ordering::Relaxed) + 1;
             if should_fail(call) {
                 return std::ptr::null_mut();
@@ -34,7 +41,7 @@ unsafe impl GlobalAlloc for CountingAllocator {
     }
 
     unsafe fn alloc_zeroed(&self, layout: Layout) -> *mut u8 {
-        if ACTIVE.load(Ordering::Relaxed) {
+        if active() {
             let call = ALLOCATIONS.fetch_add(1, Ordering::Relaxed) + 1;
             if should_fail(call) {
                 return std::ptr::null_mut();
@@ -44,14 +51,14 @@ unsafe impl GlobalAlloc for CountingAllocator {
     }
 
     unsafe fn dealloc(&self, pointer: *mut u8, layout: Layout) {
-        if ACTIVE.load(Ordering::Relaxed) {
+        if active() {
             DEALLOCATIONS.fetch_add(1, Ordering::Relaxed);
         }
         unsafe { System.dealloc(pointer, layout) }
     }
 
     unsafe fn realloc(&self, pointer: *mut u8, layout: Layout, size: usize) -> *mut u8 {
-        if ACTIVE.load(Ordering::Relaxed) {
+        if active() {
             let call = REALLOCATIONS.fetch_add(1, Ordering::Relaxed) + 1;
             if should_fail(call) {
                 return std::ptr::null_mut();
@@ -69,9 +76,9 @@ fn measured<T>(operation: impl FnOnce() -> T) -> (T, [u64; 3]) {
     REALLOCATIONS.store(0, Ordering::Relaxed);
     DEALLOCATIONS.store(0, Ordering::Relaxed);
     FAIL_ALLOCATION.store(0, Ordering::Relaxed);
-    ACTIVE.store(true, Ordering::SeqCst);
+    ACTIVE.with(|active| active.set(true));
     let result = operation();
-    ACTIVE.store(false, Ordering::SeqCst);
+    ACTIVE.with(|active| active.set(false));
     (
         result,
         [
@@ -87,9 +94,9 @@ fn fail_on_allocation<T>(call: u64, operation: impl FnOnce() -> T) -> T {
     REALLOCATIONS.store(0, Ordering::Relaxed);
     DEALLOCATIONS.store(0, Ordering::Relaxed);
     FAIL_ALLOCATION.store(call, Ordering::Relaxed);
-    ACTIVE.store(true, Ordering::SeqCst);
+    ACTIVE.with(|active| active.set(true));
     let result = operation();
-    ACTIVE.store(false, Ordering::SeqCst);
+    ACTIVE.with(|active| active.set(false));
     FAIL_ALLOCATION.store(0, Ordering::Relaxed);
     result
 }
