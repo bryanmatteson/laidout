@@ -101,7 +101,7 @@ fn package_metadata_is_publishable_and_exact() {
         toml::from_str(include_str!("../Cargo.toml")).expect("valid package manifest");
     let package = manifest["package"].as_table().expect("package table");
     assert_eq!(package["name"].as_str(), Some("laidout"));
-    assert_eq!(package["version"].as_str(), Some("0.3.0"));
+    assert_eq!(package["version"].as_str(), Some("0.3.1"));
     assert_eq!(package["rust-version"].as_str(), Some("1.85"));
     assert_eq!(package["license"].as_str(), Some("MIT"));
     assert_eq!(package["readme"].as_str(), Some("README.md"));
