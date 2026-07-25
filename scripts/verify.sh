@@ -6,6 +6,7 @@ cd "$(dirname -- "${BASH_SOURCE[0]}")/.."
 export RUST_TEST_THREADS=1
 
 cargo fmt --all -- --check
+cargo metadata --locked --no-deps --format-version 1 >/dev/null
 cargo test --all-targets
 cargo test --all-targets --features research
 cargo test --doc --no-default-features
