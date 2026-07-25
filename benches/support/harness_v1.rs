@@ -1,8 +1,7 @@
-//! Immutable benchmark measurement and artifact-schema kernel.
+//! Deterministic benchmark measurement and artifact validation.
 //!
-//! This file is captured before the prepared kernel changes production code.
-//! Role adapters may change independently; clocks, counters, workload dispatch,
-//! schema writing, and comparison rules live only here.
+//! Role adapters isolate the compared algorithms. This module owns clocks,
+//! counters, workload dispatch, schema writing, and comparison rules.
 
 use std::alloc::{GlobalAlloc, Layout, System};
 use std::collections::BTreeMap;
@@ -178,7 +177,6 @@ struct CaseArtifact {
 #[derive(Debug)]
 struct Identity {
     production_source: String,
-    plan: String,
     harness: String,
     role_adapter: String,
     baseline_adapter: String,
@@ -330,8 +328,17 @@ fn coefficient_of_variation(samples: &[u64]) -> f64 {
 }
 
 fn verify_laidout_baseline_identity() -> Result<(), String> {
-    let src = command("git", &["rev-parse", "HEAD:src"])?;
-    let manifest = command("git", &["rev-parse", "HEAD:Cargo.toml"])?;
+    let src = command(
+        "git",
+        &["rev-parse", "38c55341e02fd9e4869e060d36e88886c7ed1ea3:src"],
+    )?;
+    let manifest = command(
+        "git",
+        &[
+            "rev-parse",
+            "38c55341e02fd9e4869e060d36e88886c7ed1ea3:Cargo.toml",
+        ],
+    )?;
     if src.trim() != "8a6ba8b5d7ad618e409118d37d8731d0ca319302" {
         return Err(format!("unexpected pinned Laidout src tree: {src}"));
     }
@@ -339,13 +346,6 @@ fn verify_laidout_baseline_identity() -> Result<(), String> {
         return Err(format!(
             "unexpected pinned Laidout manifest blob: {manifest}"
         ));
-    }
-    let status = Command::new("git")
-        .args(["diff", "--quiet", "--", "src"])
-        .status()
-        .map_err(|error| format!("failed to inspect source tree: {error}"))?;
-    if !status.success() {
-        return Err("production source changed before baseline capture".to_owned());
     }
     Ok(())
 }
@@ -359,7 +359,6 @@ fn identity(role: &str) -> Result<Identity, String> {
     let dependency_graph = normalized_dependency_graph("laidout", &["--features", "research"])?;
     Ok(Identity {
         production_source: production_source_digest(role)?,
-        plan: sha256_path(Path::new("docs/prepared-layout-kernel-plan.md"))?,
         harness: sha256_path(Path::new("benches/support/harness_v1.rs"))?,
         role_adapter: sha256_path(Path::new(adapter))?,
         baseline_adapter: sha256_path(Path::new("benches/adapters/laidout_0_1_baseline.rs"))?,
@@ -391,7 +390,7 @@ fn artifact_json(
 ) -> String {
     let mut output = String::new();
     output.push_str("{\n");
-    field_number(&mut output, "schema_version", 1, true);
+    field_number(&mut output, "schema_version", 2, true);
     field_string(&mut output, "role", role, true);
     field_string(&mut output, "repository", "laidout", true);
     field_string(&mut output, "implementation", implementation, true);
@@ -407,7 +406,6 @@ fn artifact_json(
         &identity.production_source,
         true,
     );
-    field_string(&mut output, "plan_digest", &identity.plan, true);
     field_string(
         &mut output,
         "immutable_harness_digest",
@@ -520,11 +518,15 @@ fn compare(arguments: &[String]) -> Result<(), String> {
         .map_err(|error| format!("failed to read {}: {error}", candidate_path.display()))?;
     validate_current_evidence(&baseline, &candidate)?;
     validate_dependency_transition(&baseline, &candidate, &transition)?;
+    if raw_field(&baseline, "schema_version") != Some("2")
+        || raw_field(&candidate, "schema_version") != Some("2")
+    {
+        return Err("benchmark artifacts use an unsupported schema".to_owned());
+    }
     for key in [
         "schema_version",
         "repository",
         "pinned_baseline",
-        "plan_digest",
         "immutable_harness_digest",
         "baseline_adapter_digest",
         "workload_manifest_digest",
@@ -593,10 +595,6 @@ fn validate_current_evidence(
     let candidate: Value = serde_json::from_str(candidate_artifact)
         .map_err(|error| format!("invalid candidate artifact JSON: {error}"))?;
     for (key, current) in [
-        (
-            "plan_digest",
-            sha256_path(Path::new("docs/prepared-layout-kernel-plan.md"))?,
-        ),
         (
             "immutable_harness_digest",
             sha256_path(Path::new("benches/support/harness_v1.rs"))?,

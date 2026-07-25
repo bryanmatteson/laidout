@@ -17,13 +17,13 @@ let tagged = laidout::Doc::annotate(MyAnnotation::Label, doc);
 ```
 
 The deprecated free constructors remain short migration adapters. `TagId` is a
-compatibility alias for `u32`; new consumers should choose their own annotation
-type. N-ary `concat` and `join` are canonical and avoid left-deep source trees.
+compatibility alias for `u32`; new consumers use their own annotation type.
+N-ary `concat` and `join` are canonical and avoid left-deep source trees.
 
 ## Prepare once, render repeatedly
 
-`render(&doc, options)` still returns an owned result. Repeated callers should
-use `Doc::prepare`, `RenderWorkspace`, and `render_into`/`solve_into`.
+`render(&doc, options)` still returns an owned result. Repeated callers use
+`Doc::prepare`, `RenderWorkspace`, and `render_into`/`solve_into`.
 Growable mode expands only the named exhausted resource. Fixed mode never
 allocates and returns `WorkspaceExhausted` when the retained capacity is too
 small. Call `release_capacity` after an exceptional high-water workload.
@@ -35,8 +35,8 @@ be used across another mutable workspace call.
 ## Fast behavior correction
 
 Fast fitting is display-column based and uses prepared summaries. The retired
-synthetic scan budget could break a group containing many zero-width scalars
-even when it fit. At width two, the canonical correction is:
+synthetic scan budget broke groups containing many zero-width scalars even when
+they fit. At width two, the canonical correction is:
 
 ```text
 0.1: "\u{200b}\u{200b}\u{200b}\u{200b}\nx"

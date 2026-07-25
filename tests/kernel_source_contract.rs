@@ -92,7 +92,7 @@ fn package_metadata_is_publishable_and_exact() {
         toml::from_str(include_str!("../Cargo.toml")).expect("valid package manifest");
     let package = manifest["package"].as_table().expect("package table");
     assert_eq!(package["name"].as_str(), Some("laidout"));
-    assert_eq!(package["version"].as_str(), Some("0.2.0"));
+    assert_eq!(package["version"].as_str(), Some("0.3.0"));
     assert_eq!(package["rust-version"].as_str(), Some("1.85"));
     assert_eq!(package["license"].as_str(), Some("MIT"));
     assert_eq!(package["readme"].as_str(), Some("README.md"));
@@ -129,11 +129,10 @@ fn benchmark_transition_parser_is_document_aware() {
     assert!(!production_identity.contains("\"HEAD:Cargo.toml\""));
 
     let transition: toml::Value = toml::from_str(include_str!(
-        "../docs/benchmark-dependency-transition-0.2.toml"
+        "../docs/benchmark-dependency-transition-0.3.toml"
     ))
     .expect("valid dependency transition manifest");
     assert_eq!(transition["schema_version"].as_integer(), Some(1));
-    assert!(transition["direct_change"]
-        .as_array()
-        .is_some_and(|changes| !changes.is_empty()));
+    assert_eq!(transition["baseline_version"].as_str(), Some("0.3.0"));
+    assert_eq!(transition["candidate_version"].as_str(), Some("0.3.0"));
 }

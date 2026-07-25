@@ -1,16 +1,21 @@
 //! Checked compact consumer costs and optional unbounded research costs.
 
 #[derive(Clone, Copy, Debug, Eq, Ord, PartialEq, PartialOrd)]
+/// Lexicographically ordered production cost.
+///
+/// Overflow is minimized before layout burden.
 pub struct ConsumerCost {
     pub(crate) overflow: u128,
     pub(crate) burden: u64,
 }
 
 impl ConsumerCost {
+    /// Returns the squared horizontal-overflow component.
     pub const fn overflow(self) -> u128 {
         self.overflow
     }
 
+    /// Returns the newline-and-penalty burden component.
     pub const fn burden(self) -> u64 {
         self.burden
     }
@@ -156,18 +161,26 @@ mod tests {
 }
 
 #[cfg(feature = "research")]
+/// Arbitrary-precision cost models and laws used by research engines.
 pub mod research {
     use std::fmt::Debug;
 
     use num_bigint::BigUint;
 
+    /// Defines the cost algebra used by an allocating research engine.
     pub trait CostModel {
+        /// Ordered cost value produced by the model.
         type Cost: Clone + Ord + Debug;
 
+        /// Returns the additive identity.
         fn zero(&self) -> Self::Cost;
+        /// Adds two independent cost contributions.
         fn add(&self, left: &Self::Cost, right: &Self::Cost) -> Self::Cost;
+        /// Costs a text run beginning at `column`.
         fn text(&self, column: u32, width: u32) -> Self::Cost;
+        /// Costs one newline.
         fn newline(&self) -> Self::Cost;
+        /// Costs an explicit document penalty.
         fn penalty(&self, amount: u32) -> Self::Cost;
     }
 
@@ -175,21 +188,27 @@ pub mod research {
         pub trait Sealed {}
     }
 
+    /// Sealed marker for models that satisfy the frontier pruning laws.
     pub trait LawfulCostModel: CostModel + sealed::Sealed {}
 
     #[derive(Clone, Debug, Eq, Ord, PartialEq, PartialOrd)]
+    /// Arbitrary-precision counterpart to [`super::ConsumerCost`].
     pub struct ResearchConsumerCost {
+        /// Squared horizontal-overflow component.
         pub overflow: BigUint,
+        /// Newline-and-penalty burden component.
         pub burden: BigUint,
     }
 
     #[derive(Clone, Copy, Debug, Eq, PartialEq)]
+    /// Arbitrary-precision version of the production consumer model.
     pub struct ResearchConsumerCostModel {
         width: u32,
         newline_cost: u32,
     }
 
     impl ResearchConsumerCostModel {
+        /// Creates a model for the requested page width.
         pub const fn new(width: u32) -> Self {
             Self {
                 width,
@@ -197,6 +216,7 @@ pub mod research {
             }
         }
 
+        /// Sets the burden charged for each newline.
         pub const fn with_newline_cost(mut self, newline_cost: u32) -> Self {
             self.newline_cost = newline_cost;
             self
@@ -252,7 +272,9 @@ pub mod research {
     impl LawfulCostModel for ResearchConsumerCostModel {}
 
     #[derive(Clone, Copy, Debug)]
+    /// Research model that minimizes overflow and then final height.
     pub struct OverflowThenHeight {
+        /// Target page width in display columns.
         pub width: u32,
     }
 

@@ -1,6 +1,6 @@
 //! Allocating compatibility engines for arbitrary cost models.
 //!
-//! This module is intentionally separate from the compact prepared consumer
+//! This module is separate from the compact prepared consumer
 //! kernel. It favors a small, inspectable oracle implementation over bounded
 //! storage and is available only with the `research` feature.
 
@@ -14,27 +14,51 @@ pub use crate::doc::count_choices;
 use crate::doc::{Doc, Node, TagId, TextRun};
 
 #[derive(Clone, Debug)]
+/// Persistent output tree used by allocating research engines.
 pub enum Out {
+    /// Empty output.
     Empty,
+    /// Measured text.
     Text(TextRun),
-    Newline { indent: u32 },
+    /// A newline followed by indentation.
+    Newline {
+        /// Indentation columns emitted after the newline.
+        indent: u32,
+    },
+    /// Concatenated output.
     Cat(Rc<Out>, Rc<Out>),
-    Tagged { tag: TagId, child: Rc<Out> },
-    Penalty { amount: u32, child: Rc<Out> },
+    /// Tagged child output.
+    Tagged {
+        /// Numeric tag applied to the child output.
+        tag: TagId,
+        /// Tagged output.
+        child: Rc<Out>,
+    },
+    /// Penalized child output.
+    Penalty {
+        /// Additional consumer cost.
+        amount: u32,
+        /// Penalized output.
+        child: Rc<Out>,
+    },
 }
 
+/// Constructs empty research output.
 pub fn out_empty() -> Rc<Out> {
     Rc::new(Out::Empty)
 }
 
+/// Constructs research text output.
 pub fn out_text(text: TextRun) -> Rc<Out> {
     Rc::new(Out::Text(text))
 }
 
+/// Constructs a research newline.
 pub fn out_newline(indent: u32) -> Rc<Out> {
     Rc::new(Out::Newline { indent })
 }
 
+/// Concatenates two research outputs, eliminating empty identities.
 pub fn out_cat(left: Rc<Out>, right: Rc<Out>) -> Rc<Out> {
     match (&*left, &*right) {
         (Out::Empty, _) => right,
@@ -43,25 +67,35 @@ pub fn out_cat(left: Rc<Out>, right: Rc<Out>) -> Rc<Out> {
     }
 }
 
+/// Wraps research output in a numeric tag.
 pub fn out_tagged(tag: TagId, child: Rc<Out>) -> Rc<Out> {
     Rc::new(Out::Tagged { tag, child })
 }
 
+/// Wraps research output in a penalty.
 pub fn out_penalty(amount: u32, child: Rc<Out>) -> Rc<Out> {
     Rc::new(Out::Penalty { amount, child })
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
+/// Materialized numeric-tag span produced by a research engine.
 pub struct AnnotationSpan {
+    /// Numeric tag.
     pub tag: TagId,
+    /// UTF-8 byte range.
     pub range: Range<usize>,
+    /// Parent span index, when nested.
     pub parent: Option<usize>,
 }
 
 #[derive(Clone, Debug)]
+/// Materialized research output and its cost.
 pub struct Rendered<C> {
+    /// Rendered UTF-8 text.
     pub text: String,
+    /// Structural tag spans.
     pub spans: Vec<AnnotationSpan>,
+    /// Model-specific cost.
     pub cost: C,
 }
 
@@ -274,6 +308,7 @@ fn materialize<C>(cost: C, out: Rc<Out>) -> Rendered<C> {
     Rendered { text, spans, cost }
 }
 
+/// Recomputes the model cost of a research output tree.
 pub fn cost_of_out<M: CostModel>(model: &M, out: &Rc<Out>) -> M::Cost {
     let mut cost = model.zero();
     let mut column = 0u32;
@@ -306,31 +341,41 @@ pub fn cost_of_out<M: CostModel>(model: &M, out: &Rc<Out>) -> M::Cost {
     cost
 }
 
+/// Materializes a research output tree as text.
 pub fn to_string(out: &Rc<Out>) -> String {
     materialize((), out.clone()).text
 }
 
+/// Materializes and splits a research output tree into lines.
 pub fn to_lines(out: &Rc<Out>) -> Vec<String> {
     to_string(out).split('\n').map(str::to_owned).collect()
 }
 
+/// Exhaustive allocating oracle.
 pub mod brute {
     use super::*;
 
     #[derive(Clone, Debug)]
+    /// Best exhaustive rendering and its structural witness.
     pub struct Rendering<C> {
+        /// Model-specific cost.
         pub cost: C,
+        /// Persistent output witness.
         pub out: Rc<Out>,
+        /// Materialized tag spans.
         pub spans: Vec<AnnotationSpan>,
+        /// Materialized output lines.
         pub lines: Vec<String>,
     }
 
     impl<C> Rendering<C> {
+        /// Joins output lines with newline characters.
         pub fn text(&self) -> String {
             self.lines.join("\n")
         }
     }
 
+    /// Enumerates every layout and returns the minimum-cost rendering.
     pub fn best<M: CostModel>(
         model: &M,
         doc: &Doc<TagId>,
@@ -356,14 +401,20 @@ pub mod brute {
     }
 }
 
+/// First-fitting allocating compatibility engine.
 pub mod greedy {
     use super::*;
 
     #[derive(Clone, Debug)]
+    /// Greedy rendering and its structural witness.
     pub struct GreedyResult<C> {
+        /// Model-specific cost.
         pub cost: C,
+        /// Persistent output witness.
         pub out: Rc<Out>,
+        /// Materialized tag spans.
         pub spans: Vec<AnnotationSpan>,
+        /// Materialized output lines.
         pub lines: Vec<String>,
     }
 
@@ -394,6 +445,7 @@ pub mod greedy {
         true
     }
 
+    /// Selects the first enumerated layout that fits `width`.
     pub fn layout<M: CostModel>(model: &M, doc: &Doc<TagId>, width: u32) -> GreedyResult<M::Cost> {
         let layouts = all_layouts(model, doc);
         let state = layouts
@@ -412,16 +464,22 @@ pub mod greedy {
     }
 }
 
+/// Sealed lawful-model frontier compatibility engine.
 pub mod frontier {
     use super::*;
 
     #[derive(Clone, Debug)]
+    /// Winning frontier candidate.
     pub struct Cand<C> {
+        /// Model-specific cost.
         pub cost: C,
+        /// Final display column.
         pub last: u32,
+        /// Persistent output witness.
         pub out: Rc<Out>,
     }
 
+    /// Returns the minimum-cost lawful candidate.
     pub fn best<M: LawfulCostModel>(model: &M, doc: &Doc<TagId>) -> Cand<M::Cost> {
         let state = all_layouts(model, doc)
             .into_iter()

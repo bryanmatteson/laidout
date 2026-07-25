@@ -13,18 +13,25 @@ use crate::prepare::{
 };
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
+/// Layout algorithm used for one solve.
 pub enum LayoutStrategy {
+    /// Linear prepared-summary strategy that selects fitting projections.
     Fast,
+    /// Cost-minimizing Pareto-frontier strategy.
     Exact,
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
+/// Policy applied when structural indentation exceeds the target width.
 pub enum IndentPolicy {
+    /// Preserve the exact structural indentation.
     Preserve,
+    /// Clamp indentation to one column below the target width.
     ClampToWidthMinusOne,
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
+/// Immutable options for one solve or render operation.
 pub struct RenderOptions {
     width: NonZeroU32,
     newline_cost: u32,
@@ -33,6 +40,7 @@ pub struct RenderOptions {
 }
 
 impl RenderOptions {
+    /// Creates exact-rendering options for a nonzero page width.
     pub const fn new(width: NonZeroU32) -> Self {
         Self {
             width,
@@ -42,164 +50,376 @@ impl RenderOptions {
         }
     }
 
+    /// Sets the burden charged for each newline.
     pub const fn with_newline_cost(mut self, newline_cost: u32) -> Self {
         self.newline_cost = newline_cost;
         self
     }
 
+    /// Selects the layout strategy.
     pub const fn with_strategy(mut self, strategy: LayoutStrategy) -> Self {
         self.strategy = strategy;
         self
     }
 
+    /// Selects the indentation overflow policy.
     pub const fn with_indent_policy(mut self, policy: IndentPolicy) -> Self {
         self.indent_policy = policy;
         self
     }
 
+    /// Returns the target page width.
     pub const fn width(&self) -> NonZeroU32 {
         self.width
     }
+    /// Returns the cost charged for each newline.
     pub const fn newline_cost(&self) -> u32 {
         self.newline_cost
     }
+    /// Returns the selected strategy.
     pub const fn strategy(&self) -> LayoutStrategy {
         self.strategy
     }
+    /// Returns the selected indentation policy.
     pub const fn indent_policy(&self) -> IndentPolicy {
         self.indent_policy
     }
 }
 
 #[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
+/// Deterministic counters produced by a completed or failed solve.
 pub struct SolveStats {
+    /// Semantic solver work items processed.
     pub work_items: u64,
+    /// Constant-time Fast fit decisions.
     pub fit_checks: u64,
+    /// Exact memo-table hits.
     pub memo_hits: u64,
+    /// Exact memo-table misses.
     pub memo_misses: u64,
+    /// Exact candidates presented for dominance.
     pub candidates_generated: u64,
+    /// Exact candidates removed by dominance.
     pub candidates_pruned: u64,
+    /// Largest completed exact frontier.
     pub peak_frontier: usize,
+    /// Completed exact memo entries.
     pub memo_entries: usize,
+    /// Selected-layout nodes retained by the solve.
     pub plan_nodes: usize,
 }
 
 #[derive(Clone, Copy, Debug, Eq, Hash, PartialEq)]
+/// Named statistic that exceeded its production counter domain.
 pub enum SolveCounter {
+    /// Semantic work items.
     WorkItems,
+    /// Fast fit decisions.
     FitChecks,
+    /// Exact memo hits.
     MemoHits,
+    /// Exact memo misses.
     MemoMisses,
+    /// Exact candidate generation.
     CandidatesGenerated,
+    /// Exact candidate pruning.
     CandidatesPruned,
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
+/// Allocation policy for a reusable workspace.
 pub enum WorkspaceMode {
+    /// Grow named resources as needed.
     Growable,
+    /// Never allocate and report typed exhaustion.
     Fixed,
 }
 
 #[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
+#[non_exhaustive]
+/// Logical capacity retained for the Fast solver.
 pub struct FastSolveCapacity {
+    /// Fast task and result entries.
     pub work_items: usize,
 }
 
+impl FastSolveCapacity {
+    /// Creates a Fast capacity value.
+    pub const fn new(work_items: usize) -> Self {
+        Self { work_items }
+    }
+}
+
 #[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
+#[non_exhaustive]
+/// Logical capacity retained for the Exact solver.
 pub struct ExactSolveCapacity {
+    /// Usable exact memo entries.
     pub memo_entries: usize,
+    /// Completed-frontier candidates.
     pub retained_candidates: usize,
+    /// Pending dominance candidates.
     pub frontier_scratch: usize,
+    /// Exact task and result entries.
     pub work_items: usize,
 }
 
+impl ExactSolveCapacity {
+    /// Creates an Exact capacity value.
+    pub const fn new(
+        memo_entries: usize,
+        retained_candidates: usize,
+        frontier_scratch: usize,
+        work_items: usize,
+    ) -> Self {
+        Self {
+            memo_entries,
+            retained_candidates,
+            frontier_scratch,
+            work_items,
+        }
+    }
+}
+
 #[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
+#[non_exhaustive]
+/// Logical capacity retained for selected-layout visitation.
 pub struct VisitCapacity {
+    /// Selected-layout traversal entries.
     pub work_items: usize,
+    /// Simultaneously active annotations.
     pub annotation_depth: usize,
 }
 
+impl VisitCapacity {
+    /// Creates a visit capacity value.
+    pub const fn new(work_items: usize, annotation_depth: usize) -> Self {
+        Self {
+            work_items,
+            annotation_depth,
+        }
+    }
+}
+
 #[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
+#[non_exhaustive]
+/// Logical capacity retained for output materialization.
 pub struct MaterializeCapacity {
+    /// UTF-8 output bytes.
     pub output_bytes: usize,
+    /// Annotation span records.
     pub spans: usize,
 }
 
+impl MaterializeCapacity {
+    /// Creates a materialization capacity value.
+    pub const fn new(output_bytes: usize, spans: usize) -> Self {
+        Self {
+            output_bytes,
+            spans,
+        }
+    }
+}
+
 #[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
+#[non_exhaustive]
+/// Complete logical capacity of a reusable workspace.
 pub struct RenderCapacity {
+    /// Fast solver storage.
     pub fast: FastSolveCapacity,
+    /// Exact solver storage.
     pub exact: ExactSolveCapacity,
+    /// Shared selected-layout nodes.
     pub plan_nodes: usize,
+    /// Selected-layout visitor storage.
     pub visit: VisitCapacity,
+    /// Materialized output storage.
     pub materialize: MaterializeCapacity,
 }
 
+impl RenderCapacity {
+    /// Creates a complete capacity value.
+    pub const fn new(
+        fast: FastSolveCapacity,
+        exact: ExactSolveCapacity,
+        plan_nodes: usize,
+        visit: VisitCapacity,
+        materialize: MaterializeCapacity,
+    ) -> Self {
+        Self {
+            fast,
+            exact,
+            plan_nodes,
+            visit,
+            materialize,
+        }
+    }
+}
+
 #[derive(Clone, Copy, Debug, Eq, Hash, PartialEq)]
+#[non_exhaustive]
+/// Named logical storage resource in a [`RenderWorkspace`].
 pub enum WorkspaceResource {
+    /// Fast task and result stacks.
     FastWorkItems,
+    /// Exact task, result, and pending stacks.
     ExactWorkItems,
+    /// Exact memo table.
     MemoEntries,
+    /// Completed exact candidates.
     RetainedCandidates,
+    /// Dominance-frontier scratch candidates.
     FrontierScratch,
+    /// Shared selected-layout arena.
     PlanNodes,
+    /// Selected-layout visitor stack.
     VisitWorkItems,
+    /// Active annotation stacks.
     AnnotationDepth,
+    /// Materialized UTF-8 bytes.
     OutputBytes,
+    /// Materialized annotation spans.
     Spans,
 }
 
 #[derive(Debug, thiserror::Error)]
+#[non_exhaustive]
+/// Failure while explicitly reserving workspace storage.
 pub enum ReserveError {
     #[error("workspace {resource:?} capacity {requested} is not representable")]
+    /// The requested logical capacity cannot be represented.
     CapacityOverflow {
+        /// Resource being reserved.
         resource: WorkspaceResource,
+        /// Requested logical entries.
         requested: usize,
     },
     #[error("failed to reserve {requested} entries for workspace {resource:?}")]
+    /// The allocator rejected a representable reservation.
     Allocation {
+        /// Resource being reserved.
         resource: WorkspaceResource,
+        /// Requested logical entries.
         requested: usize,
         #[source]
+        /// Allocator failure.
         source: TryReserveError,
     },
 }
 
+#[derive(Clone, Copy, Debug, Eq, Hash, PartialEq)]
+#[non_exhaustive]
+/// Stable category for a [`ReserveError`].
+pub enum ReserveErrorKind {
+    /// Capacity was not representable.
+    CapacityOverflow,
+    /// Allocation failed.
+    Allocation,
+}
+
+impl ReserveError {
+    /// Returns the stable error category.
+    pub const fn kind(&self) -> ReserveErrorKind {
+        match self {
+            Self::CapacityOverflow { .. } => ReserveErrorKind::CapacityOverflow,
+            Self::Allocation { .. } => ReserveErrorKind::Allocation,
+        }
+    }
+}
+
 #[derive(Debug, thiserror::Error)]
+#[non_exhaustive]
+/// Failure while solving, visiting, or materializing a prepared document.
 pub enum RenderError {
     #[error("workspace {resource:?} requirement {required:?} exceeds maximum {maximum}")]
+    /// A runtime requirement cannot be represented by the workspace.
     WorkspaceCapacityOverflow {
+        /// Exhausted resource.
         resource: WorkspaceResource,
+        /// Exact requirement, or `None` if its calculation overflowed.
         required: Option<u128>,
+        /// Largest representable requirement.
         maximum: u128,
+        /// Statistics immediately before failure.
         stats: SolveStats,
     },
     #[error("fixed workspace {resource:?} capacity {capacity} is below required {required}")]
+    /// Fixed mode had insufficient logical capacity.
     WorkspaceExhausted {
+        /// Exhausted resource.
         resource: WorkspaceResource,
+        /// Retained logical capacity.
         capacity: usize,
+        /// Required logical capacity.
         required: usize,
+        /// Statistics immediately before failure.
         stats: SolveStats,
     },
     #[error("failed to grow workspace {resource:?} from {capacity} to {required}")]
+    /// Growable mode could not allocate a named resource.
     WorkspaceGrowthFailed {
+        /// Resource that could not grow.
         resource: WorkspaceResource,
+        /// Previous logical capacity.
         capacity: usize,
+        /// Required logical capacity.
         required: usize,
+        /// Statistics immediately before failure.
         stats: SolveStats,
         #[source]
+        /// Allocator failure.
         source: TryReserveError,
     },
     #[error("solve statistic {counter:?} requirement {required} exceeds {maximum}")]
+    /// A deterministic statistic exceeded its counter domain.
     StatisticsOverflow {
+        /// Counter that overflowed.
         counter: SolveCounter,
+        /// First invalid counter value.
         required: u128,
+        /// Largest representable value.
         maximum: u64,
+        /// Statistics immediately before failure.
         stats: SolveStats,
     },
     #[error("prepared consumer cost domain invariant was violated")]
+    /// A prepared-domain cost invariant was violated.
     CostDomainViolation,
-    #[error("selected plan cost does not match its structural witness")]
+    #[error("selected layout cost does not match its structural witness")]
+    /// Replaying a selected layout produced a different cost.
     CostWitnessMismatch,
+}
+
+#[derive(Clone, Copy, Debug, Eq, Hash, PartialEq)]
+#[non_exhaustive]
+/// Stable category for a [`RenderError`].
+pub enum RenderErrorKind {
+    /// Runtime capacity was not representable.
+    WorkspaceCapacityOverflow,
+    /// Fixed storage was insufficient.
+    WorkspaceExhausted,
+    /// Growable allocation failed.
+    WorkspaceGrowthFailed,
+    /// A statistic overflowed.
+    StatisticsOverflow,
+    /// Prepared cost-domain invariant failed.
+    CostDomainViolation,
+    /// Selected layout and cost witness disagreed.
+    CostWitnessMismatch,
+}
+
+impl RenderError {
+    /// Returns the stable error category.
+    pub const fn kind(&self) -> RenderErrorKind {
+        match self {
+            Self::WorkspaceCapacityOverflow { .. } => RenderErrorKind::WorkspaceCapacityOverflow,
+            Self::WorkspaceExhausted { .. } => RenderErrorKind::WorkspaceExhausted,
+            Self::WorkspaceGrowthFailed { .. } => RenderErrorKind::WorkspaceGrowthFailed,
+            Self::StatisticsOverflow { .. } => RenderErrorKind::StatisticsOverflow,
+            Self::CostDomainViolation => RenderErrorKind::CostDomainViolation,
+            Self::CostWitnessMismatch => RenderErrorKind::CostWitnessMismatch,
+        }
+    }
 }
 
 #[derive(Clone, Copy, Debug, Eq, Hash, PartialEq)]
@@ -540,6 +760,7 @@ struct OpenSpan {
     span: SpanId,
 }
 
+/// Reusable storage for solving, visiting, and materializing layouts.
 pub struct RenderWorkspace {
     mode: WorkspaceMode,
     capacity: RenderCapacity,
@@ -567,6 +788,7 @@ pub struct RenderWorkspace {
 }
 
 impl RenderWorkspace {
+    /// Creates an empty workspace that grows named resources on demand.
     pub fn growable() -> Self {
         Self {
             mode: WorkspaceMode::Growable,
@@ -692,6 +914,7 @@ impl RenderWorkspace {
         }
     }
 
+    /// Creates a fixed workspace with all requested capacity reserved.
     pub fn fixed(capacity: RenderCapacity) -> Result<Self, ReserveError> {
         let mut workspace = Self::growable();
         workspace.reserve(capacity)?;
@@ -699,16 +922,20 @@ impl RenderWorkspace {
         Ok(workspace)
     }
 
+    /// Returns the current allocation policy.
     pub const fn mode(&self) -> WorkspaceMode {
         self.mode
     }
+    /// Changes the allocation policy without releasing retained storage.
     pub fn set_mode(&mut self, mode: WorkspaceMode) {
         self.mode = mode;
     }
+    /// Returns public logical capacity by resource.
     pub const fn capacity(&self) -> RenderCapacity {
         self.capacity
     }
 
+    /// Transactionally reserves at least the requested logical capacity.
     pub fn reserve(&mut self, requested: RenderCapacity) -> Result<(), ReserveError> {
         self.reset_operation();
         validate_capacity(requested)?;
@@ -861,6 +1088,7 @@ impl RenderWorkspace {
         Ok(())
     }
 
+    /// Drops every retained backing allocation while preserving workspace mode.
     pub fn release_capacity(&mut self) {
         self.reset_operation();
         self.fast_work = Vec::new();
@@ -2784,27 +3012,35 @@ fn memo_hash(key: MemoKey) -> u64 {
 }
 
 #[derive(Clone, Copy, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
+/// Result-local index of one annotation span.
 pub struct SpanId(u32);
 
 impl SpanId {
+    /// Returns the index into the result's span slice.
     pub const fn index(self) -> usize {
         self.0 as usize
     }
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
+/// Structural annotation span over rendered UTF-8 bytes.
 pub struct AnnotationSpan {
+    /// Result-local annotation identifier.
     pub annotation: AnnotationId,
+    /// UTF-8 byte range in rendered text.
     pub range: Range<usize>,
+    /// Parent span for nested annotations.
     pub parent: Option<SpanId>,
 }
 
+/// Read-only view of annotations active at one visitor event.
 pub struct ActiveAnnotations<'a, A> {
     ids: &'a [AnnotationId],
     data: &'a PreparedData<A>,
 }
 
 impl<'a, A> ActiveAnnotations<'a, A> {
+    /// Iterates from outermost to innermost active annotation.
     pub fn iter(&self) -> impl ExactSizeIterator<Item = (AnnotationId, &'a A)> + '_ {
         self.ids
             .iter()
@@ -2812,28 +3048,36 @@ impl<'a, A> ActiveAnnotations<'a, A> {
             .map(|id| (id, self.data.annotations[id.0 as usize].as_ref()))
     }
 
+    /// Returns the innermost active annotation.
     pub fn innermost(&self) -> Option<(AnnotationId, &'a A)> {
         let id = *self.ids.last()?;
         Some((id, self.data.annotations[id.0 as usize].as_ref()))
     }
 }
 
+/// Receives a solved structural layout without forcing text materialization.
 pub trait LayoutVisitor<A> {
+    /// Consumer-defined sink error.
     type Error;
+    /// Called before visiting an annotated region.
     fn enter_annotation(&mut self, _id: AnnotationId, _annotation: &A) -> Result<(), Self::Error> {
         Ok(())
     }
+    /// Called after visiting an annotated region.
     fn exit_annotation(&mut self, _id: AnnotationId, _annotation: &A) -> Result<(), Self::Error> {
         Ok(())
     }
+    /// Called when replaying an explicit penalty.
     fn penalty(&mut self, _amount: u32) -> Result<(), Self::Error> {
         Ok(())
     }
+    /// Receives one measured text run and its active annotations.
     fn text(
         &mut self,
         text: &str,
         annotations: ActiveAnnotations<'_, A>,
     ) -> Result<(), Self::Error>;
+    /// Receives one newline and the indentation that follows it.
     fn newline(
         &mut self,
         indent: u32,
@@ -2842,8 +3086,11 @@ pub trait LayoutVisitor<A> {
 }
 
 #[derive(Debug)]
+/// Failure from either layout replay or the consumer visitor.
 pub enum VisitError<E> {
+    /// Workspace or cost-witness failure.
     Workspace(RenderError),
+    /// Consumer visitor failure.
     Visitor(E),
 }
 
@@ -2858,6 +3105,7 @@ impl<E: fmt::Display> fmt::Display for VisitError<E> {
 
 impl<E: std::error::Error + 'static> std::error::Error for VisitError<E> {}
 
+/// Borrowed solved layout that exclusively holds its workspace until visited or dropped.
 pub struct LayoutRef<'p, 'w, A> {
     prepared: &'p PreparedDoc<A>,
     workspace: &'w mut RenderWorkspace,
@@ -2866,13 +3114,16 @@ pub struct LayoutRef<'p, 'w, A> {
 }
 
 impl<A> LayoutRef<'_, '_, A> {
+    /// Returns the selected layout cost.
     pub const fn cost(&self) -> ConsumerCost {
         self.core.cost
     }
+    /// Returns deterministic solve statistics.
     pub const fn stats(&self) -> SolveStats {
         self.core.stats
     }
 
+    /// Replays the structural witness into `visitor`.
     #[allow(clippy::result_large_err)]
     pub fn visit<V: LayoutVisitor<A>>(
         mut self,
@@ -2893,6 +3144,7 @@ impl<A> Drop for LayoutRef<'_, '_, A> {
     }
 }
 
+/// Solves a prepared document into a structural layout without materializing text.
 pub fn solve_into<'p, 'w, A>(
     prepared: &'p PreparedDoc<A>,
     options: RenderOptions,
@@ -3059,6 +3311,7 @@ fn push_annotation(
     Ok(())
 }
 
+/// Borrowed materialized result that exclusively holds its workspace until dropped.
 pub struct RenderedRef<'p, 'w, A> {
     prepared: &'p PreparedDoc<A>,
     workspace: &'w mut RenderWorkspace,
@@ -3067,21 +3320,26 @@ pub struct RenderedRef<'p, 'w, A> {
 }
 
 impl<A> RenderedRef<'_, '_, A> {
+    /// Returns rendered UTF-8 text.
     pub fn text(&self) -> &str {
         std::str::from_utf8(&self.workspace.output).expect("prepared text remains UTF-8")
     }
+    /// Returns result-local annotation spans.
     pub fn spans(&self) -> &[AnnotationSpan] {
         &self.workspace.spans
     }
+    /// Iterates spans paired with their application annotation.
     pub fn resolved_spans(&self) -> ResolvedSpans<'_, A> {
         ResolvedSpans {
             spans: self.workspace.spans.iter(),
             data: &self.prepared.0,
         }
     }
+    /// Returns the selected layout cost.
     pub const fn cost(&self) -> ConsumerCost {
         self.core.cost
     }
+    /// Returns deterministic solve statistics.
     pub const fn stats(&self) -> SolveStats {
         self.core.stats
     }
@@ -3117,6 +3375,7 @@ impl<'a, A> Iterator for ResolvedSpans<'a, A> {
 
 impl<A> ExactSizeIterator for ResolvedSpans<'_, A> {}
 
+/// Solves and materializes a prepared document into borrowed workspace storage.
 pub fn render_into<'p, 'w, A>(
     prepared: &'p PreparedDoc<A>,
     options: RenderOptions,

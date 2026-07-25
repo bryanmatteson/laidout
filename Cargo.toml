@@ -1,6 +1,6 @@
 [package]
 name = "laidout"
-version = "0.2.0"
+version = "0.3.0"
 authors = ["Bryan Matteson <7145232+bryanmatteson@users.noreply.github.com>"]
 edition = "2021"
 rust-version = "1.85"
@@ -12,7 +12,28 @@ documentation = "https://docs.rs/laidout"
 readme = "README.md"
 keywords = ["layout", "pretty-printing", "terminal", "unicode"]
 categories = ["command-line-interface", "text-processing"]
-exclude = [".github/**", ".gitignore", "rust-toolchain.toml", "scripts/**"]
+include = [
+    "src/*.rs",
+    "examples/*.rs",
+    "support/*.rs",
+    "proofs/*.sh",
+    "proofs/*.smt2",
+    "docs/aligned-tables.md",
+    "docs/benchmark-dependency-transition-0.3.toml",
+    "docs/cost-model-proofs.md",
+    "docs/migration-0.2.md",
+    "docs/migration-0.3.md",
+    "CHANGELOG.md",
+    "CODE_OF_CONDUCT.md",
+    "CONTRIBUTING.md",
+    "LICENSE",
+    "README.md",
+    "SECURITY.md",
+]
+
+[package.metadata.docs.rs]
+all-features = true
+rustdoc-args = ["--cfg", "docsrs"]
 
 [features]
 default = []

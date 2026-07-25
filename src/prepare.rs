@@ -1,7 +1,6 @@
 //! Dense prepared document representation and conservative domain bounds.
 
 use std::collections::HashMap;
-use std::hash::Hash;
 use std::sync::Arc;
 
 use crate::doc::{Doc, FlatAlternative, Node, TextRun};
@@ -25,6 +24,7 @@ impl TextId {
 }
 
 #[derive(Clone, Copy, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
+/// Result-local identifier for one prepared annotation value.
 pub struct AnnotationId(pub(crate) u32);
 
 #[derive(Clone, Copy, Debug, Eq, Hash, PartialEq)]
@@ -132,6 +132,8 @@ pub(crate) fn then(left: FitSummary, right: FitSummary) -> Option<FitSummary> {
 }
 
 #[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
+#[non_exhaustive]
+/// Conservative, width-independent bounds computed during preparation.
 pub struct PreparedBounds {
     output_bytes_upper: usize,
     line_count_upper: usize,
@@ -148,82 +150,143 @@ pub struct PreparedBounds {
 }
 
 impl PreparedBounds {
+    /// Maximum materialized UTF-8 bytes for one candidate.
     pub const fn output_bytes_upper(self) -> usize {
         self.output_bytes_upper
     }
+    /// Maximum materialized line count for one candidate.
     pub const fn line_count_upper(self) -> usize {
         self.line_count_upper
     }
+    /// Maximum materialized annotation spans for one candidate.
     pub const fn spans_upper(self) -> usize {
         self.spans_upper
     }
+    /// Maximum simultaneously active annotations.
     pub const fn annotation_depth(self) -> usize {
         self.annotation_depth
     }
+    /// Exact peak Fast traversal stack requirement.
     pub const fn fast_work_items(self) -> usize {
         self.fast_work_items
     }
+    /// Conservative semantic solve-work upper bound when representable.
     pub const fn solve_work_items_upper(self) -> Option<u128> {
         self.solve_work_items_upper
     }
+    /// Conservative Fast decision upper bound when representable.
     pub const fn fast_fit_checks_upper(self) -> Option<u128> {
         self.fast_fit_checks_upper
     }
+    /// Maximum selected-layout nodes in one candidate.
     pub const fn single_plan_nodes_upper(self) -> usize {
         self.single_plan_nodes_upper
     }
+    /// Exact selected-layout visitor stack requirement.
     pub const fn visit_work_items(self) -> usize {
         self.visit_work_items
     }
+    /// Conservative Exact candidate-emission upper bound when representable.
     pub const fn candidate_emissions_upper(self) -> Option<u128> {
         self.candidate_emissions_upper
     }
+    /// Maximum squared-overflow cost across complete candidate output.
     pub const fn overflow_cost_upper(self) -> u128 {
         self.overflow_cost_upper
     }
+    /// Maximum newline-and-penalty burden across complete candidate output.
     pub const fn burden_cost_upper(self) -> u64 {
         self.burden_cost_upper
     }
 }
 
 #[derive(Clone, Copy, Debug, Eq, Hash, PartialEq)]
+#[non_exhaustive]
+/// Prepared representation resource that exceeded its production domain.
 pub enum PreparedResource {
+    /// Prepared nodes.
     Nodes,
+    /// Child edges.
     Edges,
+    /// Interned text records.
     Texts,
+    /// Annotation handles.
     Annotations,
+    /// UTF-8 text payload bytes.
     TextBytes,
+    /// Display-column sums.
     DisplayColumns,
+    /// Materialized output bytes.
     OutputBytes,
+    /// Materialized line count.
     LineCount,
+    /// Structural indentation.
     Indentation,
+    /// Simultaneously active annotations.
     AnnotationDepth,
+    /// Materialized span occurrences.
     SpanOccurrences,
+    /// Selected-layout node identifiers.
     PlanNodes,
 }
 
 #[derive(Clone, Copy, Debug, Eq, Hash, PartialEq)]
+#[non_exhaustive]
+/// Production cost component checked during preparation.
 pub enum CostComponent {
+    /// Squared horizontal overflow.
     Overflow,
+    /// Newline-and-penalty burden.
     Burden,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq, thiserror::Error)]
+#[non_exhaustive]
+/// Failure while preparing a source document for repeated solving.
 pub enum PrepareError {
     #[error("prepared {resource:?} representation requires {required:?}, maximum {maximum}")]
+    /// A prepared representation bound cannot be represented.
     RepresentationExceeded {
+        /// Resource whose bound failed.
         resource: PreparedResource,
+        /// Exact requirement, or `None` if its calculation overflowed.
         required: Option<u128>,
+        /// Largest representable value.
         maximum: u128,
     },
     #[error("prepared {component:?} cost requires {required:?}, maximum {maximum}")]
+    /// A complete candidate can exceed the checked production cost domain.
     CostDomainExceeded {
+        /// Cost component whose bound failed.
         component: CostComponent,
+        /// Exact requirement, or `None` if its calculation overflowed.
         required: Option<u128>,
+        /// Largest representable value.
         maximum: u128,
     },
 }
 
+#[derive(Clone, Copy, Debug, Eq, Hash, PartialEq)]
+#[non_exhaustive]
+/// Stable category for a [`PrepareError`].
+pub enum PrepareErrorKind {
+    /// Prepared representation was not representable.
+    RepresentationExceeded,
+    /// Candidate cost was not representable.
+    CostDomainExceeded,
+}
+
+impl PrepareError {
+    /// Returns the stable error category.
+    pub const fn kind(&self) -> PrepareErrorKind {
+        match self {
+            Self::RepresentationExceeded { .. } => PrepareErrorKind::RepresentationExceeded,
+            Self::CostDomainExceeded { .. } => PrepareErrorKind::CostDomainExceeded,
+        }
+    }
+}
+
+/// Immutable dense representation prepared for repeated layout.
 pub struct PreparedDoc<A = u32>(pub(crate) Arc<PreparedData<A>>);
 
 impl<A> Clone for PreparedDoc<A> {
@@ -233,8 +296,14 @@ impl<A> Clone for PreparedDoc<A> {
 }
 
 impl<A> PreparedDoc<A> {
+    /// Returns the conservative bounds computed during preparation.
     pub fn bounds(&self) -> PreparedBounds {
         self.0.bounds
+    }
+
+    /// Returns the number of retained annotation values.
+    pub fn annotation_count(&self) -> usize {
+        self.0.annotations.len()
     }
 }
 
@@ -404,7 +473,7 @@ struct Builder<A> {
     flat_nodes: Vec<Option<NodeId>>,
     bounds: Vec<BoundCalc>,
     text_ids: HashMap<(Arc<str>, u32), TextId>,
-    annotation_ids: HashMap<Arc<A>, AnnotationId>,
+    annotation_ids: HashMap<usize, AnnotationId>,
     node_ids: HashMap<NodeKey, NodeId>,
     source_ids: HashMap<usize, Option<NodeId>>,
     source_flat: HashMap<usize, Option<NodeId>>,
@@ -442,7 +511,7 @@ impl BoundLimits {
     };
 }
 
-impl<A: Eq + Hash> Builder<A> {
+impl<A> Builder<A> {
     fn new() -> Result<Self, PrepareError> {
         let mut builder = Self {
             nodes: Vec::new(),
@@ -479,13 +548,14 @@ impl<A: Eq + Hash> Builder<A> {
     }
 
     fn intern_annotation(&mut self, value: &Arc<A>) -> Result<AnnotationId, PrepareError> {
-        if let Some(id) = self.annotation_ids.get(value) {
+        let identity = Arc::as_ptr(value) as usize;
+        if let Some(id) = self.annotation_ids.get(&identity) {
             return Ok(*id);
         }
         let id =
             compact_id(self.annotations.len(), PreparedResource::Annotations).map(AnnotationId)?;
         self.annotations.push(value.clone());
-        self.annotation_ids.insert(value.clone(), id);
+        self.annotation_ids.insert(identity, id);
         Ok(id)
     }
 
@@ -1224,10 +1294,11 @@ fn push_node_children<'a, A>(node: &'a Node<A>, mut push: impl FnMut(&'a Doc<A>)
 }
 
 impl<A> Doc<A> {
-    pub fn prepare(&self) -> Result<PreparedDoc<A>, PrepareError>
-    where
-        A: Eq + Hash,
-    {
+    /// Converts this source graph into an immutable prepared representation.
+    ///
+    /// Annotation handles are interned by identity, so `A` needs no equality,
+    /// hashing, or clone implementation.
+    pub fn prepare(&self) -> Result<PreparedDoc<A>, PrepareError> {
         Builder::new()?.prepare(self)
     }
 }

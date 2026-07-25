@@ -1,0 +1,50 @@
+name: Bug report
+description: Report incorrect layout, a panic, or another reproducible defect
+title: "[Bug]: "
+labels:
+  - bug
+body:
+  - type: markdown
+    attributes:
+      value: Provide a minimal, reproducible defect report.
+  - type: input
+    id: version
+    attributes:
+      label: Laidout version
+      placeholder: "0.3.0"
+    validations:
+      required: true
+  - type: input
+    id: rust
+    attributes:
+      label: Rust version and target
+      placeholder: "rustc 1.85.0, x86_64-unknown-linux-gnu"
+    validations:
+      required: true
+  - type: textarea
+    id: reproduction
+    attributes:
+      label: Minimal reproduction
+      description: Include the document, render options, and runnable code when possible.
+      render: rust
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: Expected behavior
+    validations:
+      required: true
+  - type: textarea
+    id: actual
+    attributes:
+      label: Actual behavior
+    validations:
+      required: true
+  - type: checkboxes
+    id: security
+    attributes:
+      label: Security
+      options:
+        - label: This report does not contain a security vulnerability or secret.
+          required: true

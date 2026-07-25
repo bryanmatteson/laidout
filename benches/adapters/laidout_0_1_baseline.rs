@@ -1,5 +1,5 @@
 //! Frozen self-contained Laidout 0.1 exact engine benchmark adapter.
-//! This module intentionally imports no mutable production layout code.
+//! This module imports no mutable production layout code.
 
 mod frozen {
     pub mod doc {

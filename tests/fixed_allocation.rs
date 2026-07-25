@@ -166,43 +166,21 @@ fn explicit_reservation_is_transactional_when_a_late_allocation_fails() {
     let _measurement = MEASUREMENT_LOCK
         .lock()
         .unwrap_or_else(|poisoned| poisoned.into_inner());
-    let initial = laidout::RenderCapacity {
-        fast: laidout::FastSolveCapacity { work_items: 2 },
-        exact: laidout::ExactSolveCapacity {
-            memo_entries: 2,
-            retained_candidates: 2,
-            frontier_scratch: 2,
-            work_items: 2,
-        },
-        plan_nodes: 2,
-        visit: laidout::VisitCapacity {
-            work_items: 2,
-            annotation_depth: 2,
-        },
-        materialize: laidout::MaterializeCapacity {
-            output_bytes: 2,
-            spans: 2,
-        },
-    };
+    let initial = laidout::RenderCapacity::new(
+        laidout::FastSolveCapacity::new(2),
+        laidout::ExactSolveCapacity::new(2, 2, 2, 2),
+        2,
+        laidout::VisitCapacity::new(2, 2),
+        laidout::MaterializeCapacity::new(2, 2),
+    );
     let mut workspace = RenderWorkspace::fixed(initial).unwrap();
-    let requested = laidout::RenderCapacity {
-        fast: laidout::FastSolveCapacity { work_items: 64 },
-        exact: laidout::ExactSolveCapacity {
-            memo_entries: 64,
-            retained_candidates: 64,
-            frontier_scratch: 64,
-            work_items: 64,
-        },
-        plan_nodes: 64,
-        visit: laidout::VisitCapacity {
-            work_items: 64,
-            annotation_depth: 64,
-        },
-        materialize: laidout::MaterializeCapacity {
-            output_bytes: 64,
-            spans: 64,
-        },
-    };
+    let requested = laidout::RenderCapacity::new(
+        laidout::FastSolveCapacity::new(64),
+        laidout::ExactSolveCapacity::new(64, 64, 64, 64),
+        64,
+        laidout::VisitCapacity::new(64, 64),
+        laidout::MaterializeCapacity::new(64, 64),
+    );
 
     let error = fail_on_allocation(2, || workspace.reserve(requested)).unwrap_err();
     assert!(matches!(error, laidout::ReserveError::Allocation { .. }));

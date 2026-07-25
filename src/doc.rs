@@ -12,16 +12,51 @@ use unicode_width::UnicodeWidthStr;
 pub type TagId = u32;
 
 #[derive(Clone, Copy, Debug, Default, Eq, Hash, PartialEq)]
+/// Unicode display-width policy used while measuring text.
 pub enum WidthMode {
     #[default]
+    /// Treat East Asian ambiguous characters as narrow.
     Narrow,
+    /// Use CJK-wide measurements for East Asian ambiguous characters.
     Cjk,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
+#[non_exhaustive]
+/// Failure while validating or measuring one text run.
 pub enum TextError {
-    ControlCharacter { character: char, byte_offset: usize },
-    DisplayWidthOverflow { byte_offset: usize },
+    /// The run contains a control character, which must be represented structurally.
+    ControlCharacter {
+        /// Rejected control character.
+        character: char,
+        /// UTF-8 byte offset of the character.
+        byte_offset: usize,
+    },
+    /// The measured width cannot fit in the production `u32` column domain.
+    DisplayWidthOverflow {
+        /// UTF-8 byte offset at which measurement exceeded the domain.
+        byte_offset: usize,
+    },
+}
+
+#[derive(Clone, Copy, Debug, Eq, Hash, PartialEq)]
+#[non_exhaustive]
+/// Stable category for a [`TextError`].
+pub enum TextErrorKind {
+    /// A control character was present.
+    ControlCharacter,
+    /// Display width exceeded the supported domain.
+    DisplayWidthOverflow,
+}
+
+impl TextError {
+    /// Returns the stable error category.
+    pub const fn kind(&self) -> TextErrorKind {
+        match self {
+            Self::ControlCharacter { .. } => TextErrorKind::ControlCharacter,
+            Self::DisplayWidthOverflow { .. } => TextErrorKind::DisplayWidthOverflow,
+        }
+    }
 }
 
 impl fmt::Display for TextError {
@@ -45,6 +80,7 @@ impl fmt::Display for TextError {
 impl Error for TextError {}
 
 #[derive(Clone, Debug, Eq, Hash, PartialEq)]
+/// Validated UTF-8 text with an authoritative display width.
 pub struct TextRun {
     value: Arc<str>,
     columns: u32,
@@ -52,18 +88,23 @@ pub struct TextRun {
 
 impl TextRun {
     pub(crate) fn try_new(value: &str, width_mode: WidthMode) -> Result<Self, TextError> {
-        if let Some((byte_offset, character)) = value
-            .char_indices()
-            .find(|(_, character)| character.is_control())
-        {
-            return Err(TextError::ControlCharacter {
-                character,
-                byte_offset,
-            });
-        }
+        validate_text(value)?;
         Ok(Self {
             value: Arc::from(value),
             columns: measured_columns(value, width_mode, value.len())?,
+        })
+    }
+
+    /// Creates a validated run with caller-supplied display columns.
+    ///
+    /// This is the integration point for terminal-specific or application-specific
+    /// width policies.
+    pub fn try_with_columns(value: impl AsRef<str>, columns: u32) -> Result<Self, TextError> {
+        let value = value.as_ref();
+        validate_text(value)?;
+        Ok(Self {
+            value: Arc::from(value),
+            columns,
         })
     }
 
@@ -74,10 +115,12 @@ impl TextRun {
         }
     }
 
+    /// Returns the stored UTF-8 text.
     pub fn value(&self) -> &str {
         &self.value
     }
 
+    /// Returns the authoritative display width.
     pub fn columns(&self) -> u32 {
         self.columns
     }
@@ -85,6 +128,19 @@ impl TextRun {
     pub(crate) fn value_arc(&self) -> Arc<str> {
         self.value.clone()
     }
+}
+
+fn validate_text(value: &str) -> Result<(), TextError> {
+    if let Some((byte_offset, character)) = value
+        .char_indices()
+        .find(|(_, character)| character.is_control())
+    {
+        return Err(TextError::ControlCharacter {
+            character,
+            byte_offset,
+        });
+    }
+    Ok(())
 }
 
 pub(crate) fn measured_columns(
@@ -152,18 +208,22 @@ impl<A> Doc<A> {
         Self(Some(Arc::new(node)))
     }
 
+    /// Constructs an empty document.
     pub fn empty() -> Self {
         Self::from_node(Node::Empty)
     }
 
+    /// Constructs narrow-policy text, panicking on a control character.
     pub fn text(value: impl AsRef<str>) -> Self {
         Self::try_text(value).unwrap_or_else(|error| panic!("{error}"))
     }
 
+    /// Constructs narrow-policy text with typed validation failure.
     pub fn try_text(value: impl AsRef<str>) -> Result<Self, TextError> {
         Self::try_text_with(value, WidthMode::Narrow)
     }
 
+    /// Constructs text under an explicit built-in width policy.
     pub fn try_text_with(value: impl AsRef<str>, width_mode: WidthMode) -> Result<Self, TextError> {
         Ok(Self::from_node(Node::Text(TextRun::try_new(
             value.as_ref(),
@@ -171,18 +231,39 @@ impl<A> Doc<A> {
         )?)))
     }
 
+    /// Constructs text with explicit display columns, panicking on invalid text.
+    pub fn text_with_columns(value: impl AsRef<str>, columns: u32) -> Self {
+        Self::try_text_with_columns(value, columns).unwrap_or_else(|error| panic!("{error}"))
+    }
+
+    /// Constructs text with explicit display columns.
+    pub fn try_text_with_columns(value: impl AsRef<str>, columns: u32) -> Result<Self, TextError> {
+        Ok(Self::from_text_run(TextRun::try_with_columns(
+            value, columns,
+        )?))
+    }
+
+    /// Constructs a document from an already validated measured run.
+    pub fn from_text_run(run: TextRun) -> Self {
+        Self::from_node(Node::Text(run))
+    }
+
+    /// Constructs a break that flattens to one space.
     pub fn line() -> Self {
         Self::from_node(Node::Break(FlatAlternative::Space))
     }
 
+    /// Constructs a break that flattens to empty output.
     pub fn soft_line() -> Self {
         Self::from_node(Node::Break(FlatAlternative::Empty))
     }
 
+    /// Constructs a mandatory line break.
     pub fn hard_line() -> Self {
         Self::from_node(Node::HardLine)
     }
 
+    /// Concatenates documents while canonicalizing empty and nested sequences.
     pub fn concat(docs: impl IntoIterator<Item = Self>) -> Self {
         let mut children = Vec::new();
         for doc in docs {
@@ -204,6 +285,7 @@ impl<A> Doc<A> {
         }
     }
 
+    /// Joins documents with a cloned separator.
     pub fn join(separator: Self, docs: impl IntoIterator<Item = Self>) -> Self {
         let mut interleaved = Vec::new();
         for (index, doc) in docs.into_iter().enumerate() {
@@ -215,24 +297,29 @@ impl<A> Doc<A> {
         Self::concat(interleaved)
     }
 
+    /// Chooses between the flat and broken projections of a document.
     pub fn group(doc: Self) -> Self {
         Self::from_node(Node::Group(doc))
     }
 
+    /// Constructs a locally filling sequence.
     pub fn fill(docs: impl IntoIterator<Item = Self>) -> Self {
         Self::from_node(Node::Fill(
             docs.into_iter().collect::<Vec<_>>().into_boxed_slice(),
         ))
     }
 
+    /// Increases indentation for line breaks in `doc`.
     pub fn nest(indent: u32, doc: Self) -> Self {
         Self::from_node(Node::Nest { indent, child: doc })
     }
 
+    /// Captures the current column as the indentation of `doc`.
     pub fn align(doc: Self) -> Self {
         Self::from_node(Node::Align(doc))
     }
 
+    /// Constructs an ordered explicit layout choice.
     pub fn choice(preferred: Self, alternative: Self) -> Self {
         Self::from_node(Node::Choice {
             preferred,
@@ -240,10 +327,12 @@ impl<A> Doc<A> {
         })
     }
 
+    /// Attaches an application-owned annotation to a structural region.
     pub fn annotate(annotation: A, doc: Self) -> Self {
         Self::annotate_shared(Arc::new(annotation), doc)
     }
 
+    /// Attaches a shared annotation handle to a structural region.
     pub fn annotate_shared(annotation: Arc<A>, doc: Self) -> Self {
         Self::from_node(Node::Annotate {
             annotation,
@@ -251,6 +340,7 @@ impl<A> Doc<A> {
         })
     }
 
+    /// Adds layout burden without changing output bytes.
     pub fn penalize(amount: u32, doc: Self) -> Self {
         if amount == 0 {
             doc
@@ -259,6 +349,7 @@ impl<A> Doc<A> {
         }
     }
 
+    /// Returns the preferred flat projection, or `None` when a hard line prevents it.
     pub fn flatten(&self) -> Option<Self> {
         enum Work<A> {
             Enter(Doc<A>),
@@ -336,6 +427,77 @@ impl<A> Doc<A> {
             }
         }
         results.pop().expect("root flatten result")
+    }
+
+    /// Rebuilds this document with a different annotation type.
+    ///
+    /// Shared source nodes remain shared and the mapping callback runs once for
+    /// each distinct shared annotation value.
+    pub fn map_annotations<B>(&self, mut map: impl FnMut(&A) -> B) -> Doc<B> {
+        enum Work<A> {
+            Enter(Doc<A>),
+            Exit(Doc<A>),
+        }
+
+        let mut work = vec![Work::Enter(self.clone())];
+        let mut mapped = HashMap::<usize, Doc<B>>::new();
+        let mut mapped_annotations = HashMap::<usize, Arc<B>>::new();
+        while let Some(item) = work.pop() {
+            match item {
+                Work::Enter(doc) => {
+                    let pointer = Arc::as_ptr(doc.root()) as usize;
+                    if mapped.contains_key(&pointer) {
+                        continue;
+                    }
+                    work.push(Work::Exit(doc.clone()));
+                    push_children(&doc, |child| work.push(Work::Enter(child.clone())));
+                }
+                Work::Exit(doc) => {
+                    let child = |doc: &Doc<A>| mapped[&(Arc::as_ptr(doc.root()) as usize)].clone();
+                    let replacement = match doc.root().as_ref() {
+                        Node::Empty => Doc::empty(),
+                        Node::Text(run) => Doc::from_text_run(run.clone()),
+                        Node::Break(flat) => Doc::from_node(Node::Break(*flat)),
+                        Node::HardLine => Doc::hard_line(),
+                        Node::Seq(children) => {
+                            Doc::concat(children.iter().map(&child).collect::<Vec<_>>())
+                        }
+                        Node::Group(value) => Doc::group(child(value)),
+                        Node::Fill(children) => {
+                            Doc::fill(children.iter().map(&child).collect::<Vec<_>>())
+                        }
+                        Node::Nest {
+                            indent,
+                            child: value,
+                        } => Doc::nest(*indent, child(value)),
+                        Node::Align(value) => Doc::align(child(value)),
+                        Node::Choice {
+                            preferred,
+                            alternative,
+                        } => Doc::choice(child(preferred), child(alternative)),
+                        Node::Annotate {
+                            annotation,
+                            child: value,
+                        } => {
+                            let pointer = Arc::as_ptr(annotation) as usize;
+                            let mapped_annotation = mapped_annotations
+                                .entry(pointer)
+                                .or_insert_with(|| Arc::new(map(annotation)))
+                                .clone();
+                            Doc::annotate_shared(mapped_annotation, child(value))
+                        }
+                        Node::Penalty {
+                            amount,
+                            child: value,
+                        } => Doc::penalize(*amount, child(value)),
+                    };
+                    mapped.insert(Arc::as_ptr(doc.root()) as usize, replacement);
+                }
+            }
+        }
+        mapped
+            .remove(&(Arc::as_ptr(self.root()) as usize))
+            .expect("mapped root")
     }
 }
 
@@ -700,76 +862,94 @@ impl<A: fmt::Debug> fmt::Debug for Doc<A> {
     }
 }
 
+#[doc(hidden)]
 #[deprecated(since = "0.2.0", note = "use Doc::empty")]
 pub fn empty() -> Doc<u32> {
     Doc::empty()
 }
+#[doc(hidden)]
 #[deprecated(since = "0.2.0", note = "use Doc::text")]
 pub fn text(value: impl AsRef<str>) -> Doc<u32> {
     Doc::text(value)
 }
+#[doc(hidden)]
 #[deprecated(since = "0.2.0", note = "use Doc::try_text")]
 pub fn try_text(value: impl AsRef<str>) -> Result<Doc<u32>, TextError> {
     Doc::try_text(value)
 }
+#[doc(hidden)]
 #[deprecated(since = "0.2.0", note = "use Doc::try_text_with")]
 pub fn try_text_with(value: impl AsRef<str>, mode: WidthMode) -> Result<Doc<u32>, TextError> {
     Doc::try_text_with(value, mode)
 }
+#[doc(hidden)]
 #[deprecated(since = "0.2.0", note = "use Doc::line")]
 pub fn line() -> Doc<u32> {
     Doc::line()
 }
+#[doc(hidden)]
 #[deprecated(since = "0.2.0", note = "use Doc::soft_line")]
 pub fn softline() -> Doc<u32> {
     Doc::soft_line()
 }
+#[doc(hidden)]
 #[deprecated(since = "0.2.0", note = "use Doc::hard_line")]
 pub fn hardline() -> Doc<u32> {
     Doc::hard_line()
 }
+#[doc(hidden)]
 #[deprecated(since = "0.2.0", note = "use Doc::concat")]
 pub fn concat(docs: impl IntoIterator<Item = Doc<u32>>) -> Doc<u32> {
     Doc::concat(docs)
 }
+#[doc(hidden)]
 #[deprecated(since = "0.2.0", note = "use Doc::concat")]
 pub fn concat2(left: Doc<u32>, right: Doc<u32>) -> Doc<u32> {
     Doc::concat([left, right])
 }
+#[doc(hidden)]
 #[deprecated(since = "0.2.0", note = "use Doc::join")]
 pub fn join(separator: Doc<u32>, docs: impl IntoIterator<Item = Doc<u32>>) -> Doc<u32> {
     Doc::join(separator, docs)
 }
+#[doc(hidden)]
 #[deprecated(since = "0.2.0", note = "use Doc::group")]
 pub fn group(doc: Doc<u32>) -> Doc<u32> {
     Doc::group(doc)
 }
+#[doc(hidden)]
 #[deprecated(since = "0.2.0", note = "use Doc::nest")]
 pub fn nest(indent: u16, doc: Doc<u32>) -> Doc<u32> {
     Doc::nest(u32::from(indent), doc)
 }
+#[doc(hidden)]
 #[deprecated(since = "0.2.0", note = "use Doc::align")]
 pub fn align(doc: Doc<u32>) -> Doc<u32> {
     Doc::align(doc)
 }
+#[doc(hidden)]
 #[deprecated(since = "0.2.0", note = "use Doc::choice")]
 pub fn choice(preferred: Doc<u32>, alternative: Doc<u32>) -> Doc<u32> {
     Doc::choice(preferred, alternative)
 }
+#[doc(hidden)]
 #[deprecated(since = "0.2.0", note = "use Doc::annotate")]
 pub fn tag(annotation: TagId, doc: Doc<u32>) -> Doc<u32> {
     Doc::annotate(annotation, doc)
 }
+#[doc(hidden)]
 #[deprecated(since = "0.2.0", note = "use Doc::penalize")]
 pub fn penalize(amount: u32, doc: Doc<u32>) -> Doc<u32> {
     Doc::penalize(amount, doc)
 }
+#[doc(hidden)]
 #[deprecated(since = "0.2.0", note = "use Doc::flatten")]
 pub fn flatten(doc: &Doc<u32>) -> Option<Doc<u32>> {
     doc.flatten()
 }
 
 #[cfg(feature = "research")]
+/// Counts explicit and implicit layout choices for research-oracle admission.
 pub fn count_choices<A>(doc: &Doc<A>) -> usize {
     let mut count = 0usize;
     let mut work = vec![doc];

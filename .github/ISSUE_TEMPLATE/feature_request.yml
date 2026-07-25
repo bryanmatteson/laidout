@@ -1,0 +1,28 @@
+name: Feature request
+description: Propose a new integration or layout capability
+title: "[Feature]: "
+labels:
+  - enhancement
+body:
+  - type: textarea
+    id: problem
+    attributes:
+      label: Consumer problem
+      description: Describe the integration or layout problem, not only a proposed API.
+    validations:
+      required: true
+  - type: textarea
+    id: proposal
+    attributes:
+      label: Proposed approach
+    validations:
+      required: true
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Alternatives considered
+  - type: textarea
+    id: compatibility
+    attributes:
+      label: Compatibility and performance considerations
+      description: Note public API, output-semantic, allocation, or proof effects.

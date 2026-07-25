@@ -2,6 +2,38 @@
 
 All notable changes to Laidout are documented here.
 
+## 0.3.0 - 2026-07-25
+
+### Added
+
+- A reusable `Renderer` with owned, `fmt::Write`, and `io::Write` paths.
+- Generic classified-text ingestion, token constructors, and aligned tables.
+- Explicit-width text runs for host-controlled display measurement.
+- DAG-preserving `Doc::map_annotations` and a common `prelude`.
+- Stable error-kind enums, capacity constructors, and complete public API
+  documentation.
+- GitHub workflows for cross-platform verification, dependency policy, API
+  compatibility, and trusted publishing.
+- Repository contribution, security, conduct, issue, and review policies.
+
+### Changed
+
+- Annotation preparation now interns shared values by identity and no longer
+  requires `Eq + Hash`.
+- Public error and capacity types are non-exhaustive so compatible variants and
+  fields can be added in later releases.
+- Release verification captures fresh benchmark evidence from a clean checkout
+  instead of depending on untracked local artifacts.
+- Benchmark artifacts identify source, harness, adapters, workloads,
+  dependencies, toolchain, and host without external design artifacts.
+- GitHub Actions dependencies are pinned to immutable commits.
+- Published package contents use an explicit allowlist.
+
+### Compatibility
+
+This is a breaking pre-1.0 release. See
+[`docs/migration-0.3.md`](docs/migration-0.3.md) for migration guidance.
+
 ## 0.2.0 - 2026-07-19
 
 ### Added

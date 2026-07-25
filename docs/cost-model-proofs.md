@@ -25,10 +25,10 @@ of shared DAG nodes. It establishes:
 - every newline-cost and explicit-penalty sum fits `u64`.
 
 An unrepresentable acceptance bound returns `PrepareError` before solving.
-Advisory work-count metadata may instead be `None`; it is not used to justify
-cost arithmetic. Every runtime addition, column addition, multiplication, and
-subtraction remains checked and returns `CostDomainViolation` if the prepared
-invariant is ever broken.
+Advisory work-count metadata is `None` when its bound is unrepresentable; cost
+arithmetic does not depend on that metadata. Every runtime addition, column
+addition, multiplication, and subtraction remains checked and returns
+`CostDomainViolation` if the prepared invariant is broken.
 
 For a `u32` column and width, the overflow potential is based on
 `q(c) = max(0, c - page_width)`. Thus `q(c) <= 2^32 - 1`, and one line contributes

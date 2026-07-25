@@ -1,0 +1,8 @@
+schema_version = 1
+baseline_version = "0.3.0"
+candidate_version = "0.3.0"
+
+# Both roles use the release dependency graph. The baseline is a frozen,
+# self-contained copy of Laidout 0.1's layout algorithm. The candidate is the
+# current prepared kernel. The comparison isolates the algorithm change and
+# captures reproducible evidence from a clean checkout.
