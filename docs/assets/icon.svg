@@ -1,0 +1,8 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 256 256" role="img" aria-label="Laidout: flowing lines within a page">
+  <defs><linearGradient id="bg" x2="1" y2="1"><stop stop-color="#29304c"/><stop offset="1" stop-color="#6d57a4"/></linearGradient></defs>
+  <rect x="8" y="8" width="240" height="240" rx="56" fill="url(#bg)"/>
+  <rect x="59" y="45" width="139" height="168" rx="14" fill="#f6f1ff"/>
+  <path d="M81 78h65M81 103h91M81 128h43M99 153h73M99 178h50" stroke="#7d69b1" stroke-width="9" stroke-linecap="round"/>
+  <path d="M174 75v119" stroke="#ccc0e8" stroke-width="2" stroke-dasharray="5 5"/>
+  <path d="m35 136 13 13-13 13M222 98l-13 13 13 13" fill="none" stroke="#c8b4f5" stroke-width="6" stroke-linecap="round" stroke-linejoin="round"/>
+</svg>

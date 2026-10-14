@@ -1,4 +1,6 @@
-# laidout
+<p align="center"><img src="docs/assets/icon.svg" width="112" alt="Laidout icon"></p>
+<h1 align="center">Laidout</h1>
+<p align="center"><strong>Build a document once. Make it look right at every width.</strong></p>
 
 [![CI](https://github.com/bryanmatteson/laidout/actions/workflows/ci.yml/badge.svg)](https://github.com/bryanmatteson/laidout/actions/workflows/ci.yml)
 [![crates.io](https://img.shields.io/crates/v/laidout.svg)](https://crates.io/crates/laidout)
@@ -17,6 +19,39 @@ cargo add laidout
 
 Laidout 0.3 supports Rust 1.85 and newer, has no unsafe code, and does not
 require annotations to implement `Eq`, `Hash`, `Clone`, or `Debug`.
+
+<p align="center"><img src="docs/assets/demo.gif" width="1000" alt="Laidout renders JSON at wide and narrow widths, then aligns a Unicode table and switches to its vertical layout"></p>
+
+The same structured JSON becomes compact or indented as space changes. A
+Unicode table keeps its columns aligned and falls back to vertical rows in a
+narrow viewport. These are real calls to the library; run
+[`examples/readme.rs`](examples/readme.rs) or regenerate the GIF with the
+[recording script](scripts/record-readme-demo.py).
+
+## A layout kernel for your formatter
+
+- 📐 **Express structure.** Compose text, optional and mandatory line breaks,
+  groups, nesting, alignment, fill layouts, and explicit alternatives. Keep
+  content and layout decisions in the same immutable document.
+- 🔁 **Prepare once, render repeatedly.** Reuse a prepared document across
+  widths and output sinks, with a retained renderer or caller-owned workspace.
+- 🎨 **Carry your annotations.** Attach syntax classes, source references,
+  styles, or any application value. Resolve output spans or consume annotation
+  events through a visitor; nested annotations retain their identity.
+- 🌏 **Measure display columns.** Unicode width is measured when text is
+  constructed. Host applications can supply an authoritative column count.
+- ⚖️ **Choose your strategy.** Fast rendering makes bounded fit decisions;
+  Exact selects a deterministic layout with minimum checked cost.
+- 🧰 **Control allocations and output.** Warm and fix workspace capacity,
+  render into borrowed output, stream to a text sink, or visit the selected
+  layout in a custom protocol. Capacity failures are explicit.
+- 📊 **Format tables.** Left, right, and center alignment, headers, ragged
+  rows, display-width padding, and compact or vertical layout use ordinary
+  document nodes and the same annotation model.
+
+Use it in source formatters, decompilers, terminal tools, structured logs, and
+editor presentations. Your application decides how annotations become colors,
+links, or source maps.
 
 ## Quick start
 
@@ -143,5 +178,7 @@ The contribution process is defined in [CONTRIBUTING.md](CONTRIBUTING.md).
 Report vulnerabilities through [SECURITY.md](SECURITY.md), never through a
 public issue. Community participation is governed by
 [CODE_OF_CONDUCT.md](CODE_OF_CONDUCT.md).
+
+The [media recipe](docs/assets/README.md) documents the example and GIF capture.
 
 Laidout is available under the [MIT license](LICENSE).
